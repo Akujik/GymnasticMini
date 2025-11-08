@@ -1,0 +1,1395 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "User Identity System API",
+    "version": "1.0.0",
+    "description": "用户身份系统API规范，支持微信登录、档案管理等功能",
+    "contact": {
+      "name": "CCMartMeet Team",
+      "email": "support@ccmartmeet.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000/api/v1",
+      "description": "开发环境"
+    },
+    {
+      "url": "https://api.ccmartmeet.com/api/v1",
+      "description": "生产环境"
+    }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "微信静默登录",
+        "description": "使用微信授权code进行登录，获取JWT Token和账号信息",
+        "tags": ["认证"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              },
+              "examples": {
+                "normal": {
+                  "summary": "正常登录请求",
+                  "value": {
+                    "code": "071XK5ll2y7B4B4283ll2yc8nn4XK5l6"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "登录成功响应",
+                    "value": {
+                      "code": 200,
+                      "message": "登录成功",
+                      "data": {
+                        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+                        "account_id": 1,
+                        "profile_id": null,
+                        "expires_at": "2025-11-25T00:00:00Z"
+                      }
+                    }
+                  },
+                  "existing_user": {
+                    "summary": "已有档案用户登录",
+                    "value": {
+                      "code": 200,
+                      "message": "登录成功",
+                      "data": {
+                        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                        "account_id": 1,
+                        "profile_id": 1,
+                        "expires_at": "2025-11-25T00:00:00Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalid_code": {
+                    "summary": "无效的授权码",
+                    "value": {
+                      "code": 400,
+                      "message": "无效的微信授权code",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/phone": {
+      "post": {
+        "summary": "获取微信手机号",
+        "description": "解密微信返回的手机号code，获取用户手机号码",
+        "tags": ["认证"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneRequest"
+              },
+              "examples": {
+                "normal": {
+                  "summary": "获取手机号请求",
+                  "value": {
+                    "code": "071XK5ll2y7B4B4283ll2yc8nn4XK5l6"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "获取成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "获取手机号成功",
+                    "value": {
+                      "code": 200,
+                      "message": "获取成功",
+                      "data": {
+                        "phone": "13800138000"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "获取失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "invalid_code": {
+                    "summary": "无效的code",
+                    "value": {
+                      "code": 400,
+                      "message": "无效的手机号获取code",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles": {
+      "get": {
+        "summary": "获取档案列表",
+        "description": "获取当前账号可管理的所有档案列表",
+        "tags": ["档案管理"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileListResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "获取档案列表成功",
+                    "value": {
+                      "code": 200,
+                      "message": "查询成功",
+                      "data": {
+                        "profiles": [
+                          {
+                            "profile_id": 1,
+                            "name": "李女士",
+                            "nickname": "小李",
+                            "birthday": "1990-01-01",
+                            "age": 35.8,
+                            "gender": 2,
+                            "avatar_url": "https://wx.qlogo.cn/...",
+                            "relation_type": "self",
+                            "is_current": true
+                          },
+                          {
+                            "profile_id": 2,
+                            "name": "小明",
+                            "nickname": "明明",
+                            "birthday": "2015-03-10",
+                            "age": 10.6,
+                            "gender": 1,
+                            "avatar_url": "https://wx.qlogo.cn/...",
+                            "relation_type": "child",
+                            "is_current": false
+                          }
+                        ],
+                        "total": 2,
+                        "limit": 5
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "unauthorized": {
+                    "summary": "Token无效",
+                    "value": {
+                      "code": 401,
+                      "message": "Token无效或已过期",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "创建档案",
+        "description": "创建新的用户档案（家长或学员）",
+        "tags": ["档案管理"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProfileRequest"
+              },
+              "examples": {
+                "adult": {
+                  "summary": "创建成人档案",
+                  "value": {
+                    "name": "李女士",
+                    "nickname": "小李",
+                    "id_number": "110101199001011234",
+                    "birthday": "1990-01-01",
+                    "gender": 2,
+                    "relation_type": "self",
+                    "avatar_url": "https://wx.qlogo.cn/...",
+                    "phone": "13800138000",
+                    "sports_background": "曾练习过瑜伽和游泳"
+                  }
+                },
+                "child": {
+                  "summary": "创建儿童档案",
+                  "value": {
+                    "name": "小明",
+                    "nickname": "明明",
+                    "birthday": "2015-03-10",
+                    "gender": 1,
+                    "relation_type": "child",
+                    "avatar_url": "https://example.com/avatar.jpg",
+                    "sports_background": "喜欢运动，活泼好动"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProfileResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "创建档案成功",
+                    "value": {
+                      "code": 200,
+                      "message": "创建成功",
+                      "data": {
+                        "profile_id": 1,
+                        "age": 35.8,
+                        "created_at": "2025-10-26T23:00:00Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "validation_error": {
+                    "summary": "参数验证失败",
+                    "value": {
+                      "code": 400,
+                      "message": "姓名不能为空",
+                      "data": null
+                    }
+                  },
+                  "limit_exceeded": {
+                    "summary": "档案数量超限",
+                    "value": {
+                      "code": 400,
+                      "message": "档案数量已达到上限（5个）",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/{profile_id}": {
+      "get": {
+        "summary": "获取档案详情",
+        "description": "获取指定档案的详细信息",
+        "tags": ["档案管理"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "profile_id",
+            "in": "path",
+            "required": true,
+            "description": "档案ID",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileDetailResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "获取档案详情成功",
+                    "value": {
+                      "code": 200,
+                      "message": "查询成功",
+                      "data": {
+                        "profile_id": 1,
+                        "name": "李女士",
+                        "nickname": "小李",
+                        "id_number": "110101199001011234",
+                        "birthday": "1990-01-01",
+                        "age": 35.8,
+                        "gender": 2,
+                        "avatar_url": "https://wx.qlogo.cn/...",
+                        "phone": "13800138000",
+                        "sports_background": "曾练习过瑜伽和游泳",
+                        "status": 1,
+                        "created_at": "2025-10-26T23:00:00Z",
+                        "updated_at": "2025-10-26T23:00:00Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "无权限访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "forbidden": {
+                    "summary": "无权限访问档案",
+                    "value": {
+                      "code": 403,
+                      "message": "无权访问该档案",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "档案不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_found": {
+                    "summary": "档案不存在",
+                    "value": {
+                      "code": 404,
+                      "message": "档案不存在",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "更新档案信息",
+        "description": "更新档案的基本信息（部分字段可修改）",
+        "tags": ["档案管理"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "profile_id",
+            "in": "path",
+            "required": true,
+            "description": "档案ID",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileRequest"
+              },
+              "examples": {
+                "normal": {
+                  "summary": "更新档案信息",
+                  "value": {
+                    "name": "李女士",
+                    "nickname": "小李姐",
+                    "phone": "13900139000",
+                    "sports_background": "增加了跑步训练",
+                    "avatar_url": "https://example.com/new-avatar.jpg"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateProfileResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "更新档案成功",
+                    "value": {
+                      "code": 200,
+                      "message": "更新成功",
+                      "data": {
+                        "profile_id": 1,
+                        "updated_at": "2025-10-26T23:30:00Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "readonly_field": {
+                    "summary": "尝试修改只读字段",
+                    "value": {
+                      "code": 400,
+                      "message": "生日和性别不允许修改",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "删除档案",
+        "description": "软删除档案（标记为已删除，保留历史记录）",
+        "tags": ["档案管理"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "profile_id",
+            "in": "path",
+            "required": true,
+            "description": "档案ID",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteProfileResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "删除档案成功",
+                    "value": {
+                      "code": 200,
+                      "message": "删除成功（历史记录已保留）",
+                      "data": {
+                        "profile_id": 1,
+                        "deleted_at": "2025-10-26T23:45:00Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "删除失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "has_bookings": {
+                    "summary": "档案有未完成预约",
+                    "value": {
+                      "code": 400,
+                      "message": "档案有未完成的预约，无法删除",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/switch": {
+      "post": {
+        "summary": "切换当前档案",
+        "description": "切换当前操作的档案，用于多档案管理",
+        "tags": ["档案管理"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SwitchProfileRequest"
+              },
+              "examples": {
+                "normal": {
+                  "summary": "切换档案请求",
+                  "value": {
+                    "profile_id": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "切换成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SwitchProfileResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "切换档案成功",
+                    "value": {
+                      "code": 200,
+                      "message": "已切换至：小明",
+                      "data": {
+                        "profile_id": 2,
+                        "name": "小明",
+                        "age": 10.6
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "切换失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "not_belong": {
+                    "summary": "档案不属于当前账号",
+                    "value": {
+                      "code": 400,
+                      "message": "该档案不属于当前账号",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/current": {
+      "get": {
+        "summary": "获取当前档案",
+        "description": "获取当前选中的档案信息",
+        "tags": ["档案管理"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentProfileResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "获取当前档案成功",
+                    "value": {
+                      "code": 200,
+                      "message": "查询成功",
+                      "data": {
+                        "profile_id": 1,
+                        "name": "李女士",
+                        "age": 35.8,
+                        "avatar_url": "https://wx.qlogo.cn/..."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "未选中档案",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "examples": {
+                  "no_current": {
+                    "summary": "未选中档案",
+                    "value": {
+                      "code": 404,
+                      "message": "未选中任何档案",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/validate-limit": {
+      "get": {
+        "summary": "检查档案数量上限",
+        "description": "检查当前账号是否达到档案数量上限（5个）",
+        "tags": ["档案管理"],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateLimitResponse"
+                },
+                "examples": {
+                  "can_create": {
+                    "summary": "可以创建档案",
+                    "value": {
+                      "code": 200,
+                      "message": "未达上限",
+                      "data": {
+                        "current_count": 3,
+                        "limit": 5,
+                        "can_create": true
+                      }
+                    }
+                  },
+                  "limit_reached": {
+                    "summary": "已达上限",
+                    "value": {
+                      "code": 200,
+                      "message": "已达上限",
+                      "data": {
+                        "current_count": 5,
+                        "limit": 5,
+                        "can_create": false
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "StandardResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "响应代码"
+          },
+          "message": {
+            "type": "string",
+            "description": "响应消息"
+          },
+          "data": {
+            "description": "响应数据"
+          }
+        },
+        "required": ["code", "message"]
+      },
+      "ErrorResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer",
+                "enum": [400, 401, 403, 404, 500]
+              },
+              "data": {
+                "type": "null"
+              }
+            }
+          }
+        ]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "微信授权code"
+          }
+        },
+        "required": ["code"]
+      },
+      "LoginResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "JWT Token"
+                  },
+                  "account_id": {
+                    "type": "integer",
+                    "description": "账号ID"
+                  },
+                  "profile_id": {
+                    "type": "integer",
+                    "nullable": true,
+                    "description": "主档案ID（首次登录为null）"
+                  },
+                  "expires_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Token过期时间"
+                  }
+                },
+                "required": ["token", "account_id", "expires_at"]
+              }
+            }
+          }
+        ]
+      },
+      "PhoneRequest": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "微信手机号获取code"
+          }
+        },
+        "required": ["code"]
+      },
+      "PhoneResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "phone": {
+                    "type": "string",
+                    "description": "手机号码"
+                  }
+                },
+                "required": ["phone"]
+              }
+            }
+          }
+        ]
+      },
+      "CreateProfileRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "真实姓名（必填）"
+          },
+          "nickname": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "常用名/昵称（选填）"
+          },
+          "id_number": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "身份证号或护照号（选填）"
+          },
+          "birthday": {
+            "type": "string",
+            "format": "date",
+            "description": "生日（必填）"
+          },
+          "gender": {
+            "type": "integer",
+            "enum": [1, 2],
+            "description": "性别：1=男,2=女（必填）"
+          },
+          "relation_type": {
+            "type": "string",
+            "enum": ["self", "child", "spouse"],
+            "description": "报课目的：self=自己报课, child=给孩子报课, spouse=给家人朋友报课（必填）"
+          },
+          "avatar_url": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "头像URL（选填）"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "手机号（选填）"
+          },
+          "sports_background": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "运动情况（选填）"
+          }
+        },
+        "required": ["name", "birthday", "gender", "relation_type"]
+      },
+      "CreateProfileResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "profile_id": {
+                    "type": "integer",
+                    "description": "档案ID"
+                  },
+                  "age": {
+                    "type": "number",
+                    "format": "float",
+                    "description": "年龄（精确到0.1岁）"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "创建时间"
+                  }
+                },
+                "required": ["profile_id", "age", "created_at"]
+              }
+            }
+          }
+        ]
+      },
+      "ProfileInfo": {
+        "type": "object",
+        "properties": {
+          "profile_id": {
+            "type": "integer",
+            "description": "档案ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "姓名"
+          },
+          "nickname": {
+            "type": "string",
+            "nullable": true,
+            "description": "昵称"
+          },
+          "birthday": {
+            "type": "string",
+            "format": "date",
+            "description": "生日"
+          },
+          "age": {
+            "type": "number",
+            "format": "float",
+            "description": "年龄"
+          },
+          "gender": {
+            "type": "integer",
+            "description": "性别：1=男,2=女"
+          },
+          "avatar_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "头像URL"
+          },
+          "relation_type": {
+            "type": "string",
+            "enum": ["self", "child", "parent", "spouse"],
+            "description": "关系类型"
+          },
+          "is_current": {
+            "type": "boolean",
+            "description": "是否为当前选中档案"
+          }
+        },
+        "required": ["profile_id", "name", "age", "gender", "relation_type", "is_current"]
+      },
+      "ProfileListResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "profiles": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProfileInfo"
+                    },
+                    "description": "档案列表"
+                  },
+                  "total": {
+                    "type": "integer",
+                    "description": "档案总数"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "description": "档案上限"
+                  }
+                },
+                "required": ["profiles", "total", "limit"]
+              }
+            }
+          }
+        ]
+      },
+      "ProfileDetailResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "profile_id": {
+                    "type": "integer",
+                    "description": "档案ID"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "姓名"
+                  },
+                  "nickname": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "昵称"
+                  },
+                  "id_number": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "身份证号或护照号"
+                  },
+                  "birthday": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "生日"
+                  },
+                  "age": {
+                    "type": "number",
+                    "format": "float",
+                    "description": "年龄"
+                  },
+                  "gender": {
+                    "type": "integer",
+                    "description": "性别：1=男,2=女"
+                  },
+                  "avatar_url": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "头像URL"
+                  },
+                  "phone": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "手机号"
+                  },
+                  "sports_background": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "运动情况"
+                  },
+                  "status": {
+                    "type": "integer",
+                    "description": "状态：1=正常,0=已删除"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "创建时间"
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "更新时间"
+                  }
+                },
+                "required": ["profile_id", "name", "age", "gender", "status", "created_at", "updated_at"]
+              }
+            }
+          }
+        ]
+      },
+      "UpdateProfileRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "真实姓名"
+          },
+          "nickname": {
+            "type": "string",
+            "maxLength": 50,
+            "description": "常用名/昵称"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "手机号"
+          },
+          "sports_background": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "运动情况"
+          },
+          "avatar_url": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "头像URL"
+          }
+        }
+      },
+      "UpdateProfileResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "profile_id": {
+                    "type": "integer",
+                    "description": "档案ID"
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "更新时间"
+                  }
+                },
+                "required": ["profile_id", "updated_at"]
+              }
+            }
+          }
+        ]
+      },
+      "DeleteProfileResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "profile_id": {
+                    "type": "integer",
+                    "description": "档案ID"
+                  },
+                  "deleted_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "删除时间"
+                  }
+                },
+                "required": ["profile_id", "deleted_at"]
+              }
+            }
+          }
+        ]
+      },
+      "SwitchProfileRequest": {
+        "type": "object",
+        "properties": {
+          "profile_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "要切换到的档案ID"
+          }
+        },
+        "required": ["profile_id"]
+      },
+      "SwitchProfileResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "profile_id": {
+                    "type": "integer",
+                    "description": "档案ID"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "档案姓名"
+                  },
+                  "age": {
+                    "type": "number",
+                    "format": "float",
+                    "description": "年龄"
+                  }
+                },
+                "required": ["profile_id", "name", "age"]
+              }
+            }
+          }
+        ]
+      },
+      "CurrentProfileResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "profile_id": {
+                    "type": "integer",
+                    "description": "档案ID"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "档案姓名"
+                  },
+                  "age": {
+                    "type": "number",
+                    "format": "float",
+                    "description": "年龄"
+                  },
+                  "avatar_url": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "头像URL"
+                  }
+                },
+                "required": ["profile_id", "name", "age"]
+              }
+            }
+          }
+        ]
+      },
+      "ValidateLimitResponse": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StandardResponse"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "type": "object",
+                "properties": {
+                  "current_count": {
+                    "type": "integer",
+                    "description": "当前档案数量"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "description": "档案数量上限"
+                  },
+                  "can_create": {
+                    "type": "boolean",
+                    "description": "是否可以创建新档案"
+                  }
+                },
+                "required": ["current_count", "limit", "can_create"]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT Token认证，在Header中添加 Authorization: Bearer <token>"
+      }
+    },
+    "examples": {
+      "SuccessResponse": {
+        "summary": "成功响应示例",
+        "value": {
+          "code": 200,
+          "message": "操作成功",
+          "data": {}
+        }
+      },
+      "ErrorResponse": {
+        "summary": "错误响应示例",
+        "value": {
+          "code": 400,
+          "message": "请求参数错误",
+          "data": null
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "认证",
+      "description": "用户认证相关接口"
+    },
+    {
+      "name": "档案管理",
+      "description": "用户档案管理相关接口"
+    }
+  ]
+}

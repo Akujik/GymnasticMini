@@ -1,0 +1,93 @@
+# 系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# AI交互历史和临时文件
+aicontext/
+*.tmp
+*.bak
+*~
+
+# 临时报告和归档
+docs/archive/
+AI_Coding_Fix_Report.md
+开发计划和任务清单.md
+
+# 开发相关（如果将来添加）
+node_modules/
+*.log
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE相关
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 构建输出
+dist/
+build/
+*.tgz
+*.tar.gz
+
+# 测试覆盖率
+coverage/
+.nyc_output
+
+# 运行时数据
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# 可选的npm缓存目录
+.npm
+
+# 可选的eslint缓存
+.eslintcache
+
+# Microbundle缓存
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# 可选的REPL历史
+.node_repl_history
+
+# 输出的npm包
+*.tgz
+
+# Yarn完整性文件
+.yarn-integrity
+
+# parcel-bundler缓存
+.cache
+.parcel-cache
+
+# Next.js构建输出
+.next
+
+# Nuxt.js构建/生成输出
+.nuxt
+
+# Gatsby文件
+.cache/
+public
+
+# Storybook构建输出
+.out
+.storybook-out
+
+# Temporary folders
+tmp/
+temp/

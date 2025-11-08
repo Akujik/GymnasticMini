@@ -1,0 +1,70 @@
+@import "../../../style/skin.wxss";
+
+.main {
+  padding: 0rpx !important;
+}
+
+.list {
+  width: 100%;
+  padding: 0rpx 30rpx 20rpx;
+  display: flex;
+  flex-direction: column;
+}
+
+.list .item {
+  width: 100%;
+  display: flex;
+  background-color: #fff;
+  padding: 25rpx 25rpx;
+  overflow: hidden;
+  position: relative;
+  border-radius: 20rpx;
+  margin-bottom: 30rpx;
+  align-items: center;
+}
+
+.list .item .left {
+  width: 270rpx;
+  height: 180rpx;
+  border-radius: 14rpx;
+  margin-right: 15rpx;
+  border-top-left-radius: 30rpx !important;
+  border-bottom-right-radius: 30rpx !important;
+}
+
+.list .item .right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.list .item .right .title {
+  width: 100%;
+  font-size: 28rpx;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 20rpx;
+  margin-top: 14rpx;
+}
+
+.addressItem {
+  display: flex;
+}
+
+.addressItem:last-of-type {
+  align-items: center;
+  margin-top: 10rpx;
+}
+
+.flag {
+  flex: none;
+  width: 32rpx;
+  height: 32rpx;
+  margin-right: 10rpx;
+}
+
+.desc {
+  flex: auto;
+  font-size: 24rpx;
+  color: #999;
+}

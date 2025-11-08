@@ -1,0 +1,32 @@
+<wxs src="../../../../../tpls/wxs/tools.wxs" module="tools" />
+<view wx:if="{{!isLoad}}" class="margin-top load loading text-l load-project"></view>
+<block wx:else>
+  <cmpt-comm-list type="activity-list" _params="{{_params}}" route="shop/list" topBottom="120" isTotalMenu="{{false}}" placeholder="搜索" bind:list="bindCommListCmpt">
+    <view class="main">
+      <view class="list">
+        <view class="item shadow" wx:for="{{dataList.list}}" wx:key="key" bindtap="url" data-url="../../default/index/default_index" data-shop="{{item}}" data-type="back">
+          <image class="left loading" mode="aspectFill" lazy-load="{{true}}" src="{{item.pic}}" />
+          <view class="right">
+            <view class="title content-cut-two">{{item.shopName}}</view>
+            <view class="addressItem">
+              <image class="flag" lazy-load="{{true}}" src="../../../images/flag.png" />
+              <text class="desc content-cut-two">{{item.shopAddressGeo.name}}</text>
+            </view>
+            <view class="addressItem">
+              <image class="flag" lazy-load="{{true}}" src="../../../images/distance.png" />
+              <text class="desc content-cut-one">距离: {{ tools.getDistance(item.shopAddressGeo, globalData) }}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+    <!-- load begin -->
+    <import src="../../../../../tpls/public/list_load_tpl.wxml" />
+    <template is="listLoadTpl" data="{{skin:'load-project',dataList}}" />
+    <!-- load end -->
+  </cmpt-comm-list>
+  <block wx:if="{{skin.IS_SUB}}">
+    <import src="../../tpls/menu_tpl.wxml" />
+    <template is="menuTpl" data="{{skin,curMenu:'activity_index',returnHome}}" />
+  </block>
+</block>

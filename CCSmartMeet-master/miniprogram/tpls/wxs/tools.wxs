@@ -1,0 +1,61 @@
+function indexOf(data, key) {
+  return data.indexOf(key);
+}
+
+function includes(data, key) {
+  return data.indexOf(key) > -1 ? true : false;
+}
+
+function split(str, chr) {
+  var arr = str.split(chr);
+  if (arr.length == 0) return [];
+
+  return arr;
+}
+
+function number(str) {
+  return Number(str);
+}
+
+// 哈弗辛公式(Haversine formula)来计算两个地理坐标点之间的距离
+function toRad(degree) {
+  return (degree * Math.PI) / 180;
+}
+function haversineDistance(lat1, lon1, lat2, lon2) {
+  var R = 6371; // 地球半径，单位：千米
+  var dLat = toRad(lat2 - lat1);
+  var dLon = toRad(lon2 - lon1);
+  var a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  var d = R * c;
+  return d; // 返回的是千米
+}
+function getDistance(geo, globalData, hasUnit = true) {
+  var latitude = globalData.latitude;
+  var longitude = globalData.longitude;
+  var result = haversineDistance(
+    latitude,
+    longitude,
+    geo.latitude,
+    geo.longitude
+  );
+  if (result < 1) {
+    return parseInt(result * 1000) + (hasUnit ? "米" : "");
+  } else {
+    return parseInt(result * 100) / 100 + (hasUnit ? "公里" : "");
+  }
+}
+
+module.exports = {
+  split: split,
+  indexOf: indexOf,
+  includes: includes,
+  number: number,
+  getDistance: getDistance,
+};
+module.exports.msg = "hello tools";
