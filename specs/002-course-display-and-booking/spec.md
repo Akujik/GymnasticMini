@@ -1,10 +1,11 @@
-# Feature Specification: Course Display and Booking System
+# Feature Specification: Course Display and Booking System (RuoYi架构版)
 
 **Feature Branch**: `002-course-display-and-booking`
-**Created**: 2025-10-27
+**Created**: 2025-11-17
 **Status**: Draft
 **MVP**: MVP-2A
 **Dependencies**: MVP-1 (001-user-identity-system)
+**架构**: RuoYi-Vue-Pro (Spring Boot + MyBatis-Plus + Vue3)
 **Input**: "Build a course display and booking system where parents can browse courses, view course details, book classes for themselves or their children, manage their bookings, and cancel/request leave."
 
 ## User Scenarios & Testing *(mandatory)*
@@ -20,8 +21,8 @@
 **Acceptance Scenarios**:
 
 1. **Given** 用户无学员档案，**When** 进入"预约Tab"，**Then** 显示成人和儿童混合课程列表，按后台设置顺序排列，同时显示浮动提示条"填写学员资料，获取最合适的课程！"
-2. **Given** 用户有档案且为5岁L2兴趣班，**When** 进入"预约Tab"，**Then** 显示混合课程列表，按L3以下100%匹配规则(等级+年龄+发展都要满足)智能匹配并显示推荐提示"为5岁L2兴趣班推荐：适合课程"
-3. **Given** 用户有档案且为20岁成人，**When** 进入"预约Tab"，**Then** 显示混合课程列表，按L3及以上100%匹配规则(等级+发展都要满足)智能匹配并显示推荐提示"为成人推荐：适合课程"
+2. **Given** 用户有档案且为5岁L2男性学员，**When** 进入"预约Tab"，**Then** 显示混合课程列表，按L3以下100%匹配规则(等级+年龄+性别都要满足)智能匹配并显示推荐提示"为5岁L2男性学员推荐：适合课程"
+3. **Given** 用户有档案且为20岁成人，**When** 进入"预约Tab"，**Then** 显示混合课程列表，按L3及以上100%匹配规则(等级+年龄+性别都要满足)智能匹配并显示推荐提示"为成人推荐：适合课程"
 4. **Given** 用户查看课程列表，**When** 点击"体验课"分类标签，**Then** 筛选显示仅体验课类型课程，可恢复到混合显示
 5. **Given** 用户查看课程列表，**When** 点击"正式课"分类标签，**Then** 筛选显示仅正式课类型课程，可恢复到混合显示
 6. **Given** 用户查看课程列表，**When** 点击"全部"分类标签，**When** 查看列表，**Then** 恢复混合显示所有课程类型
@@ -40,8 +41,8 @@
 
 **Acceptance Scenarios**:
 
-1. **Given** 用户在"预约Tab"且当前档案为5岁L2兴趣班, **When** 点击"固定班"入口, **Then** 进入固定班课程列表页,按L3以下规则匹配,显示所有等级包含L2且年龄4-6岁的长期课程,按匹配度排序
-2. **Given** 用户查看固定班列表, **When** 点击某个匹配度95分的固定班课程, **Then** 显示课程详情+匹配详情页面(包含匹配分数:等级100分+年龄100分+发展80分)
+1. **Given** 用户在"预约Tab"且当前档案为5岁L2男性学员, **When** 点击"固定班"入口, **Then** 进入固定班课程列表页,按3维硬匹配规则,显示所有等级包含L2且年龄4-6岁且性别的长期课程,按匹配度排序
+2. **Given** 用户查看固定班列表, **When** 点击某个匹配度95分的固定班课程, **Then** 显示课程详情+匹配详情页面(包含3维硬匹配分数:等级100分+年龄100分+性别100分,软标签排序:发展80分)
 3. **Given** 固定班已满员, **When** 查看该课程, **Then** 显示"已满员"标签、"匹配度XX分"和"加入候补"按钮
 4. **Given** 固定班未满员但匹配度较低, **When** 查看该课程, **Then** 显示"剩余X个名额"、"匹配度XX分"和"立即预约"按钮,可点击查看匹配详情
 5. **Given** 当前档案为长训班用户, **When** 浏览固定班, **Then** 系统优先显示long_term类型课程,并在匹配度计算中增加发展标签权重
@@ -62,9 +63,9 @@
 1. **Given** 用户点击课程卡片，**When** 进入详情页，**Then** 显示课程信息：课程名称/时间/地点/教练/价格/剩余名额/课程介绍
 2. **Given** 当前档案为5岁儿童，**When** 查看课程详情页，**Then** 系统自动识别为儿童类型，预约确认时显示"为儿童档案XXX预约本课程"
 3. **Given** 当前档案为20岁成人，**When** 查看课程详情页，**Then** 系统自动识别为成人类型，预约确认时显示"为成人档案XXX预约本课程"
-4. **Given** 用户在详情页点击"立即预约"，**When** 弹出确认弹窗，**Then** 弹窗显示"为XXX预约本课程"，系统自动基于档案年龄处理类型匹配
-5. **Given** 用户确认预约正式课，**When** 系统执行验证，**Then** 年龄类型自动匹配验证+时间冲突检查→预约成功，任一条件不匹配→提示具体原因
-6. **Given** 用户确认预约体验课，**When** 系统检查体验次数，**Then** 未体验过+年龄类型匹配→跳转支付页，已体验过→提示"每个微信号仅可体验一次"
+4. **Given** 用户在详情页点击"立即预约"，**When** 弹出确认弹窗，**Then** 弹窗显示"为XXX预约本课程"，系统自动基于档案信息进行3维硬匹配验证
+5. **Given** 用户确认预约正式课，**When** 系统执行验证，**Then** 3维硬匹配验证(等级+年龄+性别)+时间冲突检查→预约成功，任一条件不匹配→提示具体原因
+6. **Given** 用户确认预约体验课，**When** 系统检查体验次数，**Then** 未体验过+3维硬匹配通过→跳转支付页，已体验过→提示"每个微信号仅可体验一次"
 7. **Given** 用户切换到不同年龄的档案，**When** 预约同一课程，**Then** 系统自动更新类型识别，确认弹窗反映新档案的类型特征
 
 ---
@@ -182,7 +183,7 @@
 
 #### 年龄自动识别相关
 - **年龄边界处理**: 学员年龄正好18岁，如何识别类型？ → 按照标准定义为成人类型（18岁及以上为成人）
-- **虚拟年龄使用**: 学员有虚拟年龄设置时，如何处理类型识别？ → 档案类型基于实际年龄，课程匹配使用虚拟年龄
+- **虚拟年龄使用**: 学员有虚拟年龄设置时，如何处理匹配？ → 档案信息基于实际数据，3维硬匹配中的年龄维度使用虚拟年龄
 - **类型识别错误**: 系统类型识别与用户期望不符，如何处理？ → 预约确认时显示识别依据，允许用户联系客服调整
 - **多档案类型切换**: 用户切换到不同年龄类型档案，如何处理？ → 立即更新类型识别，预约确认反映新档案特征
 
@@ -199,9 +200,9 @@
 - **FR-003**: 系统必须显示课程的完整标签信息(年龄段/等级/性别/类型/技能/发展特征),标签数据来自course_tags表
 - **FR-004**: 系统必须显示课程详情页的所有字段+标签匹配详情:课程名称/类型/适合年龄/适合等级/上课时间/上课地点/教练信息/课程价格/剩余名额/课程介绍/匹配分数/匹配原因
 - **FR-005**: 系统必须限制体验课预约次数(每个微信OpenID仅可预约一次),并在标签匹配中过滤已购买过的体验课
-- **FR-006**: 系统必须执行4维白名单匹配规则:所有学员都必须通过等级+年龄+性别+类型的强制验证(4维全部匹配才显示)
+- **FR-006**: 系统必须执行3维硬匹配规则:所有学员都必须通过等级+年龄+性别的强制验证(3维全部匹配才显示)，类型标签降级为软标签仅用于推荐排序 (根据Q4,Q11,Q16,Q19更新)
 - **FR-007**: 系统必须支持跨级标签匹配(L1+/L2+等格式),正确判断学员等级是否在课程等级范围内
-- **FR-040**: 系统必须实施4维标签白名单匹配验证(FR-040):等级维度+年龄维度+性别维度+类型维度,任一维度不匹配则课程不显示
+- **FR-040**: 系统必须实施3维硬匹配白名单验证(FR-040):等级维度+年龄维度+性别维度,任一维度不匹配则课程不显示 (根据Q4,Q11,Q16,Q19更新)
 - **FR-008**: 系统必须检测时间冲突(同一档案不能在同一时间预约两节课),并在标签匹配前预先过滤
 - **FR-009**: 系统必须在预约正式课时检查钱包余额,余额不足时允许欠费预约,记录标签匹配日志到tag_match_log表
 - **FR-010**: 系统必须计算并显示匹配分数(0-100分),基于100%匹配逻辑(用户标签完全包含课程标签),非占比权重计算
@@ -299,7 +300,7 @@
 - **SC-001**: 用户切换档案后,课程列表在500ms内按标签匹配度重新排序显示,成功率>99%
 - **SC-002**: 用户点击课程卡片进入详情页,页面加载时间<1秒,匹配详情显示准确率>99%
 - **SC-003**: 用户完成预约流程(选课程→查看匹配度→确认预约),整个流程<2分钟,流程放弃率<10%
-- **SC-004**: 4维白名单匹配规则执行准确率100%(所有学员必须通过等级+年龄+性别+类型4维强制验证,任一维度不匹配则课程不显示)
+- **SC-004**: 3维硬匹配白名单规则执行准确率100%(所有学员必须通过等级+年龄+性别3维强制验证,任一维度不匹配则课程不显示) (根据Q4,Q11,Q16,Q19更新)
 - **SC-005**: 跨级标签匹配准确率100%(L1+学员能正确匹配["L1+", "L2"]课程)
 - **SC-006**: 标签匹配算法执行时间<100ms,匹配分数计算准确率>95%
 - **SC-007**: 体验课限制准确率100%(已体验过的微信号无法再次预约体验课)
@@ -401,7 +402,7 @@
       "development": "interest",
       "privilege": "new_user"
     },
-    "match_rule": "4d_whitelist_validation",
+    "match_rule": "3d_hard_match_validation",
     "matched_courses": [
       {
         "course_id": 1,
@@ -416,18 +417,22 @@
         "match_score": 100.0,
         "validation_result": "whitelist_passed",
         "match_details": {
-          "validation_type": "4d_whitelist",
+          "validation_type": "3d_hard_match",
           "overall_match": true,
           "dimension_results": {
             "level_match": { "score": 100, "result": "matched", "reason": "等级L2在范围内" },
             "age_match": { "score": 100, "result": "matched", "reason": "年龄5.2岁符合4-5岁" },
-            "gender_match": { "score": 100, "result": "matched", "reason": "性别male符合both要求" },
-            "type_match": { "score": 100, "result": "matched", "reason": "类型interest匹配" }
+            "gender_match": { "score": 100, "result": "matched", "reason": "性别male符合both要求" }
+          },
+          "soft_tags": {
+            "course_type": "interest",
+            "development_match": "matched",
+            "recommendation_score": 95
           },
           "validation_summary": {
-            "total_dimensions": 4,
-            "passed_dimensions": 4,
-            "validation_result": "whitelist_passed"
+            "total_dimensions": 3,
+            "passed_dimensions": 3,
+            "validation_result": "hard_match_passed"
           }
         },
         "schedule": {
@@ -590,7 +595,664 @@
 
 ---
 
+---
+
+## 技术实现 (RuoYi架构)
+
+### 核心算法实现
+
+#### 3D硬匹配算法Service
+```java
+@Service
+public class CourseMatchingService {
+
+    @Autowired
+    private GymCourseMapper courseMapper;
+
+    @Autowired
+    private GymStudentProfileMapper profileMapper;
+
+    /**
+     * 3维硬匹配算法：等级+年龄+性别
+     */
+    public CourseMatchingResult findMatchedCourses(Long profileId) {
+        GymStudentProfile profile = profileMapper.selectGymStudentProfileByProfileId(profileId);
+
+        // 计算年龄（使用虚拟年龄如果存在）
+        Integer age = profile.getVirtualAge() != null ? profile.getVirtualAge() :
+                      calculateAge(profile.getBirthday());
+
+        LambdaQueryWrapper<GymCourse> wrapper = new LambdaQueryWrapper<>();
+
+        // 等级匹配
+        wrapper.ge(GymCourse::getMinLevel, profile.getSkillLevel())
+               .le(GymCourse::getMaxLevel, profile.getSkillLevel());
+
+        // 年龄匹配
+        wrapper.le(GymCourse::getMinAge, age)
+               .ge(GymCourse::getMaxAge, age);
+
+        // 性别匹配
+        wrapper.and(w -> w.isNull(GymCourse::getGenderRestriction)
+                      .or().eq(GymCourse::getGenderRestriction, "2")  // 不限
+                      .or().eq(GymCourse::getGenderRestriction, profile.getGender()));
+
+        wrapper.eq(GymCourse::getStatus, "0")
+               .orderByAsc(GymCourse::getStartTime)
+               .orderByDesc(GymCourse::getPopularity);
+
+        List<GymCourse> courses = courseMapper.selectList(wrapper);
+
+        // 计算匹配度分数
+        return new CourseMatchingResult(courses.stream()
+                .map(course -> new CourseWithScore(course, calculateMatchingScore(profile, course, age)))
+                .sorted((a, b) -> b.getScore().compareTo(a.getScore()))
+                .collect(Collectors.toList()));
+    }
+
+    private Integer calculateMatchingScore(GymStudentProfile profile, GymCourse course, Integer age) {
+        int score = 0;
+
+        // 等级匹配分数 (40%权重)
+        if (isLevelMatch(profile.getSkillLevel(), course)) {
+            score += 40;
+        }
+
+        // 年龄匹配分数 (30%权重)
+        if (isAgeMatch(age, course)) {
+            score += 30;
+        }
+
+        // 性别匹配分数 (30%权重)
+        if (isGenderMatch(profile.getGender(), course)) {
+            score += 30;
+        }
+
+        return score;
+    }
+}
+```
+
+#### 时间冲突检测算法
+```java
+@Service
+public class BookingConflictService {
+
+    @Autowired
+    private GymBookingMapper bookingMapper;
+
+    /**
+     * 检查预约时间冲突
+     */
+    public boolean hasTimeConflict(Long profileId, LocalDateTime startTime, LocalDateTime endTime) {
+        LambdaQueryWrapper<GymBooking> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(GymBooking::getProfileId, profileId)
+               .in(GymBooking::getStatus, Arrays.asList("confirmed", "pending"))
+               .and(w -> w
+                   // 情况1: 新预约开始时间在已有预约时间范围内
+                   .between(GymBooking::getStartTime, startTime, endTime)
+                   // 情况2: 新预约结束时间在已有预约时间范围内
+                   .or().between(GymBooking::getEndTime, startTime, endTime)
+                   // 情况3: 新预约完全包含已有预约
+                   .or().le(GymBooking::getStartTime, startTime)
+                       .ge(GymBooking::getEndTime, endTime));
+
+        Long count = bookingMapper.selectCount(wrapper);
+        return count > 0;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public AjaxResult createBooking(BookingRequest request) {
+        // 1. 检查时间冲突
+        if (hasTimeConflict(request.getProfileId(), request.getStartTime(), request.getEndTime())) {
+            return AjaxResult.error("预约时间与已有课程冲突，请选择其他时间");
+        }
+
+        // 2. 执行3D匹配验证
+        CourseMatchingResult matchingResult = courseMatchingService.findMatchedCourses(request.getProfileId());
+        boolean isMatched = matchingResult.getCourses().stream()
+                .anyMatch(course -> course.getCourseId().equals(request.getCourseId()));
+
+        if (!isMatched) {
+            return AjaxResult.error("该课程不符合学员的技能等级要求");
+        }
+
+        // 3. 检查课程容量
+        GymCourse course = courseMapper.selectById(request.getCourseId());
+        if (course.getCurrentEnrollment() >= course.getMaxCapacity()) {
+            return AjaxResult.error("课程已满员，您可以加入候补列表");
+        }
+
+        // 4. 创建预约记录
+        GymBooking booking = new GymBooking();
+        BeanUtils.copyProperties(request, booking);
+        booking.setStatus("pending");
+        booking.setCreateTime(LocalDateTime.now());
+
+        return toAjax(bookingMapper.insert(booking));
+    }
+}
+```
+
+### MyBatis-Plus数据访问
+
+#### GymCourse实体
+```java
+@Data
+@EqualsAndHashCode(callSuper = true)
+@Accessors(chain = true)
+@TableName("gym_course")
+public class GymCourse extends BaseEntity {
+
+    private static final long serialVersionUID = 1L;
+
+    @TableId(value = "course_id", type = IdType.AUTO)
+    private Long courseId;
+
+    @TableField("course_name")
+    @NotBlank(message = "课程名称不能为空")
+    private String courseName;
+
+    @TableField("course_type")
+    @NotBlank(message = "课程类型不能为空")
+    private String courseType;
+
+    @TableField("skill_level_required")
+    private String skillLevelRequired;
+
+    @TableField("min_level")
+    private String minLevel;
+
+    @TableField("max_level")
+    private String maxLevel;
+
+    @TableField("min_age")
+    private Integer minAge;
+
+    @TableField("max_age")
+    private Integer maxAge;
+
+    @TableField("gender_restriction")
+    private String genderRestriction;
+
+    @TableField("max_capacity")
+    private Integer maxCapacity;
+
+    @TableField("current_enrollment")
+    private Integer currentEnrollment;
+
+    @TableField("start_time")
+    private LocalDateTime startTime;
+
+    @TableField("end_time")
+    private LocalDateTime endTime;
+
+    @TableField("base_price")
+    private BigDecimal basePrice;
+
+    @TableField("popularity")
+    private String popularity;
+
+    @Version
+    private Integer version;
+
+    // 计算字段
+    @TableField(exist = false)
+    private String ageRangeText;
+
+    @TableField(exist = false)
+    private String levelRangeText;
+
+    @TableField(exist = false)
+    private Integer availableSlots;
+}
+```
+
+#### GymCourseMapper
+```java
+@Mapper
+public interface GymCourseMapper extends BaseMapper<GymCourse> {
+
+    /**
+     * 根据学员档案查找匹配课程
+     */
+    List<GymCourse> selectMatchedCoursesByProfile(@Param("profileId") Long profileId);
+
+    /**
+     * 根据条件查询课程列表
+     */
+    List<GymCourse> selectCourseList(GymCourse course);
+
+    /**
+     * 更新课程报名人数
+     */
+    @Update("UPDATE gym_course SET current_enrollment = current_enrollment + #{increment} WHERE course_id = #{courseId}")
+    int updateEnrollment(@Param("courseId") Long courseId, @Param("increment") Integer increment);
+}
+```
+
+### Spring Boot Controller实现
+
+#### GymCourseController
+```java
+@RestController
+@RequestMapping("/gym/course")
+public class GymCourseController extends BaseController {
+
+    @Autowired
+    private IGymCourseService courseService;
+
+    @Autowired
+    private CourseMatchingService matchingService;
+
+    @GetMapping("/list")
+    @Log(title = "课程列表", businessType = BusinessType.SELECT)
+    public TableDataInfo list(GymCourse course) {
+        startPage();
+        List<GymCourse> list = courseService.selectGymCourseList(course);
+        return getDataTable(list);
+    }
+
+    @GetMapping("/matched/{profileId}")
+    @Log(title = "智能匹配课程", businessType = BusinessType.SELECT)
+    public AjaxResult getMatchedCourses(@PathVariable Long profileId) {
+        CourseMatchingResult result = matchingService.findMatchedCourses(profileId);
+        return AjaxResult.success(result);
+    }
+
+    @PostMapping("/book")
+    @Log(title = "预约课程", businessType = BusinessType.INSERT)
+    public AjaxResult bookCourse(@Validated @RequestBody BookingRequest request) {
+        return bookingConflictService.createBooking(request);
+    }
+
+    @GetMapping("/{courseId}")
+    @Log(title = "课程详情", businessType = BusinessType.SELECT)
+    public AjaxResult getInfo(@PathVariable Long courseId) {
+        GymCourse course = courseService.selectGymCourseByCourseId(courseId);
+        if (course == null) {
+            return AjaxResult.error("课程不存在");
+        }
+
+        // 转换为VO对象
+        CourseVO courseVO = new CourseVO();
+        BeanUtils.copyProperties(course, courseVO);
+
+        // 计算可用名额
+        courseVO.setAvailableSlots(course.getMaxCapacity() - course.getCurrentEnrollment());
+
+        return AjaxResult.success(courseVO);
+    }
+}
+```
+
+### 小程序端集成
+
+#### 课程列表页面
+```javascript
+// pages/courses/courses.js
+Page({
+  data: {
+    courses: [],
+    loading: false,
+    categories: [
+      { name: '全部', value: 'all' },
+      { name: '体验课', value: 'trial' },
+      { name: '正式课', value: 'regular' },
+      { name: '团课', value: 'group' },
+      { name: '私教课', value: 'private' }
+    ],
+    currentCategory: 'all',
+    currentProfile: null,
+    showCreateGuide: false
+  },
+
+  onLoad() {
+    this.loadCurrentProfile();
+    this.loadCourses();
+  },
+
+  loadCurrentProfile() {
+    const profile = wx.getStorageSync('currentProfile');
+    this.setData({
+      currentProfile: profile,
+      showCreateGuide: !profile
+    });
+  },
+
+  async loadCourses(category = 'all') {
+    if (this.data.loading) return;
+
+    this.setData({ loading: true });
+
+    try {
+      let url = '/gym/course/list';
+
+      // 如果有学员档案且选择"全部"，使用智能匹配
+      if (this.data.currentProfile && category === 'all') {
+        url = `/gym/course/matched/${this.data.currentProfile.profileId}`;
+      } else if (category !== 'all') {
+        url = `/gym/course/list?courseType=${category}`;
+      }
+
+      const response = await this.request({
+        url: url,
+        method: 'GET'
+      });
+
+      if (response.code === 200) {
+        this.setData({
+          courses: response.data.courses || response.data,
+          loading: false
+        });
+      }
+    } catch (error) {
+      this.setData({ loading: false });
+      wx.showToast({
+        title: '加载课程失败',
+        icon: 'error'
+      });
+    }
+  },
+
+  // 切换分类标签
+  onCategoryTap(e) {
+    const category = e.currentTarget.dataset.category;
+    this.setData({
+      currentCategory: category
+    });
+    this.loadCourses(category);
+  },
+
+  // 预约课程
+  async onBookCourse(e) {
+    if (!this.data.currentProfile) {
+      wx.showModal({
+        title: '提示',
+        content: '请先创建学员档案，获取您的课程',
+        confirmText: '去创建',
+        success: () => {
+          wx.navigateTo({
+            url: '/pages/profiles/create'
+          });
+        }
+      });
+      return;
+    }
+
+    const courseId = e.currentTarget.dataset.courseId;
+
+    // 显示预约确认弹窗
+    wx.showModal({
+      title: '预约确认',
+      content: `为${this.data.currentProfile.studentName}预约本课程？`,
+      confirmText: '确认预约',
+      success: async () => {
+        await this.doBooking(courseId);
+      }
+    });
+  },
+
+  async doBooking(courseId) {
+    try {
+      wx.showLoading({ title: '预约中...' });
+
+      const response = await this.request({
+        url: '/gym/course/book',
+        method: 'POST',
+        data: {
+          courseId: courseId,
+          profileId: this.data.currentProfile.profileId
+        }
+      });
+
+      wx.hideLoading();
+
+      if (response.code === 200) {
+        wx.showToast({
+          title: '预约成功',
+          icon: 'success'
+        });
+
+        // 刷新课程列表
+        this.loadCourses(this.data.currentCategory);
+      } else {
+        wx.showToast({
+          title: response.msg || '预约失败',
+          icon: 'error'
+        });
+      }
+    } catch (error) {
+      wx.hideLoading();
+      wx.showToast({
+        title: '预约失败',
+        icon: 'error'
+      });
+    }
+  }
+});
+```
+
+### RuoYi管理后台集成
+
+#### Vue3课程管理页面
+```vue
+<template>
+  <div class="app-container">
+    <!-- 搜索区域 -->
+    <el-form :model="queryParams" ref="queryForm" size="small" :inline="true">
+      <el-form-item label="课程名称">
+        <el-input
+          v-model="queryParams.courseName"
+          placeholder="请输入课程名称"
+          clearable
+          @keyup.enter.native="handleQuery"
+        />
+      </el-form-item>
+      <el-form-item label="课程类型">
+        <el-select v-model="queryParams.courseType" placeholder="请选择课程类型" clearable>
+          <el-option label="团课" value="group" />
+          <el-option label="体验课" value="trial" />
+          <el-option label="私教1v1" value="private_1v1" />
+          <el-option label="私教1v2" value="private_1v2" />
+        </el-select>
+      </el-form-item>
+      <el-form-item>
+        <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
+        <el-button icon="Refresh" @click="resetQuery">重置</el-button>
+      </el-form-item>
+    </el-form>
+
+    <!-- 按钮区域 -->
+    <el-row :gutter="10" class="mb8">
+      <el-col :span="1.5">
+        <el-button
+          type="primary"
+          plain
+          icon="Plus"
+          @click="handleAdd"
+          v-hasPermi="['gymnastics:course:add']"
+        >新增</el-button>
+      </el-col>
+      <el-col :span="1.5">
+        <el-button
+          type="success"
+          plain
+          icon="Edit"
+          :disabled="single"
+          @click="handleUpdate"
+          v-hasPermi="['gymnastics:course:edit']"
+        >修改</el-button>
+      </el-col>
+      <el-col :span="1.5">
+        <el-button
+          type="danger"
+          plain
+          icon="Delete"
+          :disabled="multiple"
+          @click="handleDelete"
+          v-hasPermi="['gymnastics:course:remove']"
+        >删除</el-button>
+      </el-col>
+      <right-toolbar :showSearch.sync="showSearch" @queryTable="getList" />
+    </el-row>
+
+    <!-- 表格区域 -->
+    <el-table v-loading="loading" :data="courseList" @selection-change="handleSelectionChange">
+      <el-table-column type="selection" width="55" align="center" />
+      <el-table-column label="课程ID" align="center" prop="courseId" width="80" />
+      <el-table-column label="课程名称" align="center" prop="courseName" :show-overflow-tooltip="true" />
+      <el-table-column label="课程类型" align="center" prop="courseType">
+        <template #default="scope">
+          <dict-tag :options="course_type" :value="scope.row.courseType" />
+        </template>
+      </el-table-column>
+      <el-table-column label="等级要求" align="center" prop="skillLevelRequired" />
+      <el-table-column label="年龄范围" align="center">
+        <template #default="scope">
+          {{ scope.row.minAge }}-{{ scope.row.maxAge }}岁
+        </template>
+      </el-table-column>
+      <el-table-column label="容量" align="center">
+        <template #default="scope">
+          {{ scope.row.currentEnrollment }}/{{ scope.row.maxCapacity }}
+        </template>
+      </el-table-column>
+      <el-table-column label="价格" align="center" prop="basePrice">
+        <template #default="scope">
+          ¥{{ scope.row.basePrice }}
+        </template>
+      </el-table-column>
+      <el-table-column label="状态" align="center" prop="status">
+        <template #default="scope">
+          <dict-tag :options="sys_normal_disable" :value="scope.row.status" />
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" align="center" class="small-padding fixed-width">
+        <template #default="scope">
+          <el-button
+            size="mini"
+            type="text"
+            icon="Edit"
+            @click="handleUpdate(scope.row)"
+            v-hasPermi="['gymnastics:course:edit']"
+          >修改</el-button>
+          <el-button
+            size="mini"
+            type="text"
+            icon="Delete"
+            @click="handleDelete(scope.row)"
+            v-hasPermi="['gymnastics:course:remove']"
+          >删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <!-- 分页区域 -->
+    <pagination
+      v-show="total > 0"
+      :total="total"
+      :page.sync="queryParams.pageNum"
+      :limit.sync="queryParams.pageSize"
+      @pagination="getList"
+    />
+  </div>
+</template>
+
+<script setup name="Course">
+import { listCourse, getCourse, delCourse, addCourse, updateCourse } from "@/api/gymnastics/course";
+
+const { proxy } = getCurrentInstance();
+
+const courseList = ref([]);
+const open = ref(false);
+const loading = ref(true);
+const showSearch = ref(true);
+const ids = ref([]);
+const single = ref(true);
+const multiple = ref(true);
+const total = ref(0);
+const title = ref("");
+
+const data = reactive({
+  form: {},
+  queryParams: {
+    pageNum: 1,
+    pageSize: 10,
+    courseName: null,
+    courseType: null,
+  },
+});
+
+const { queryParams, form } = toRefs(data);
+
+/** 查询课程列表 */
+function getList() {
+  loading.value = true;
+  listCourse(queryParams).then(response => {
+    courseList.value = response.rows;
+    total.value = response.total;
+    loading.value = false;
+  });
+}
+
+/** 搜索按钮操作 */
+function handleQuery() {
+  queryParams.value.pageNum = 1;
+  getList();
+}
+
+/** 重置按钮操作 */
+function resetQuery() {
+  proxy.resetForm("queryRef");
+  handleQuery();
+}
+
+/** 新增按钮操作 */
+function handleAdd() {
+  reset();
+  open.value = true;
+  title.value = "添加课程";
+}
+
+/** 修改按钮操作 */
+function handleUpdate(row) {
+  reset();
+  const _courseId = row.courseId || ids.value;
+  getCourse(_courseId).then(response => {
+    Object.assign(form, response.data);
+    open.value = true;
+    title.value = "修改课程";
+  });
+}
+
+/** 提交按钮 */
+function submitForm() {
+  proxy.$refs["courseRef"].validate(valid => {
+    if (valid) {
+      if (form.courseId != null) {
+        updateCourse(form).then(response => {
+          proxy.$modal.msgSuccess("修改成功");
+          open.value = false;
+          getList();
+        });
+      } else {
+        addCourse(form).then(response => {
+          proxy.$modal.msgSuccess("新增成功");
+          open.value = false;
+          getList();
+        });
+      }
+    }
+  });
+}
+
+getList();
+</script>
+```
+
 **创建人**: [产品经理]
-**最后更新**: 2025-10-27
-**版本**: v1.0.0
+**最后更新**: 2025-11-17
+**版本**: v2.0.0
+**更新内容**: 技术栈重构为RuoYi架构 (Spring Boot + MyBatis-Plus + Vue3)
 **状态**: Draft

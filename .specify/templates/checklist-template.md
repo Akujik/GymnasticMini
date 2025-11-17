@@ -94,6 +94,72 @@
 - [ ] 完成标准具体
 - [ ] 时间估算合理
 
+---
+
+## DRY与代码质量检查 *(Principle 10-18)*
+
+### 代码复用检查 (Principle 10)
+- [ ] 所有工具函数已抽取到`/shared/utils/`目录
+- [ ] 无重复定义的数据库模型（通过`grep "CREATE TABLE"`检查）
+- [ ] API响应格式统一使用`shared/utils/apiResponse.js`
+- [ ] 无硬编码魔法数字（通过`eslint no-magic-numbers`检查）
+- [ ] 小程序组件库已复用（列出复用组件清单）
+- [ ] 代码重复率检查通过（`npm run dry:check`，<5%）
+
+### 模块化与单一职责检查 (Principle 11)
+- [ ] Controller文件只处理HTTP请求/响应，不含业务逻辑
+- [ ] Service层函数<50行代码，职责单一
+- [ ] Model文件只定义数据结构，不含业务逻辑
+- [ ] 函数复杂度<10（通过ESLint complexity检查）
+- [ ] 每个文件只有一个主要职责
+
+### 依赖注入与解耦检查 (Principle 12)
+- [ ] Controller不直接require业务模块
+- [ ] 使用依赖注入容器管理依赖
+- [ ] 配置通过环境变量或config.js外部化
+- [ ] 模块间依赖关系清晰，无循环依赖
+
+### 错误处理与日志检查 (Principle 13)
+- [ ] 所有async函数包含try-catch
+- [ ] 使用`shared/utils/logger.js`统一日志格式
+- [ ] 错误信息使用`shared/constants/errorCodes.js`标准错误码
+- [ ] 敏感信息已脱敏处理
+- [ ] 无console.log在生产代码中
+
+### 数据一致性检查 (Principle 14)
+- [ ] 跨表操作使用数据库事务保护
+- [ ] 涉及金额操作强制事务
+- [ ] 使用乐观锁防止并发冲突
+- [ ] 关键操作支持幂等性
+
+### API版本控制检查 (Principle 15)
+- [ ] API路径包含版本前缀`/api/v1/`
+- [ ] 响应字段只增不减
+- [ ] 废弃字段标记deprecated
+- [ ] API文档自动生成并更新
+
+### 测试覆盖率检查 (Principle 16)
+- [ ] 整体测试覆盖率>80%（`npm test`检查）
+- [ ] 核心业务逻辑覆盖率=100%
+- [ ] 共享模块测试覆盖率>90%
+- [ ] 单元测试、集成测试、端到端测试完整
+
+### 代码审查与Lint检查 (Principle 17)
+- [ ] ESLint检查无error（`npm run lint`）
+- [ ] Prettier格式检查通过（`npm run format:check`）
+- [ ] 函数包含JSDoc注释
+- [ ] Git提交信息规范
+- [ ] 代码审查已完成
+
+### 文档规范检查 (Principle 18)
+- [ ] 所有导出函数包含JSDoc注释
+- [ ] JSDoc包含参数、返回值、异常说明
+- [ ] 复杂算法有注释说明
+- [ ] README文档完整且最新
+- [ ] API文档自动生成
+
+---
+
 ## 合规性检查
 
 ### 宪法原则遵循
@@ -106,6 +172,15 @@
 - [ ] Principle 7: 测试驱动的数据操作 ✅
 - [ ] Principle 8: 安全与合规 ✅
 - [ ] Principle 9: 迁移与集成支持 ✅
+- [ ] Principle 10: DRY - 代码复用与禁止重复 ✅
+- [ ] Principle 11: 单一职责与模块化 ✅
+- [ ] Principle 12: 依赖注入与解耦 ✅
+- [ ] Principle 13: 强制错误处理与日志规范 ✅
+- [ ] Principle 14: 数据库事务与一致性保证 ✅
+- [ ] Principle 15: API版本控制与向后兼容 ✅
+- [ ] Principle 16: 测试优先与覆盖率要求 ✅
+- [ ] Principle 17: 代码审查与Lint强制执行 ✅
+- [ ] Principle 18: 文档即代码与注释规范 ✅
 
 ### MVP阶段一致性
 - [ ] 符合当前MVP的范围定义
@@ -140,6 +215,7 @@
 - [ ] 设计质量检查 ✅
 - [ ] 实现质量检查 ✅
 - [ ] 文档质量检查 ✅
+- [ ] DRY与代码质量检查 ✅
 - [ ] 合规性检查 ✅
 - [ ] 最终验收检查 ✅
 

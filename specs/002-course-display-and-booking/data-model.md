@@ -138,7 +138,7 @@
 | id | INT | PK, AUTO_INCREMENT | - | 标签ID | PRIMARY |
 | course_id | INT | NOT NULL | - | 课程ID | UNIQUE |
 | level_range | VARCHAR(100) | NULL | NULL | 等级范围(JSON数组,如["L1+", "L2"]) | INDEX |
-| age_range | ENUM('3-4','4-5','5-6','6+','all') | DEFAULT 'all' | 年龄范围 | INDEX |
+| age_range | VARCHAR(20) | DEFAULT '全年龄段' | 年龄范围(4-6岁/成人/全年龄段等) | INDEX |
 | gender | ENUM('male','female','both') | DEFAULT 'both' | 性别要求 | INDEX |
 | course_type | ENUM('interest','professional','competition','long_term','trial','private','camp') | NOT NULL | - | 课程类型 | INDEX |
 | skill_types | JSON | NULL | NULL | 技能类型(JSON数组) | - |
@@ -161,7 +161,7 @@
 
 **业务规则**：
 - `level_range` 支持跨级匹配，JSON格式存储多个等级，如["L1+", "L2"]
-- `age_range` 目标年龄段，支持灵活匹配
+- `age_range` 目标年龄段，统一VARCHAR格式(4-6岁/成人/全年龄段等)，支持灵活匹配
 - `gender` 性别限制，both表示不限，新增第4维标签匹配
 - `course_type` 课程类型，影响匹配策略
 - `skill_types` 技能类型JSON数组，支持多技能标签
@@ -174,6 +174,45 @@
 - `base_price` 基础价格，用于课程列表显示"XX元起"，实际价格由pricing_rule动态计算
 - `pricing_strategy` 定价策略，fixed=固定价格(体验课200元)，dynamic=动态计算(基于用户权益)
 - **FR-040**: 4维标签白名单匹配：等级维度 + 年龄维度 + 性别维度 + 类型维度，任一维度不匹配则课程不显示
+
+#### 4维标签数据迁移脚本
+
+**用途**: 统一age_range格式为VARCHAR，确保4维匹配算法一致性
+
+```sql
+-- 步骤1: 备份现有数据
+CREATE TABLE course_tags_backup AS SELECT * FROM course_tags;
+
+-- 步骤2: 添加新的VARCHAR字段（临时）
+ALTER TABLE course_tags ADD COLUMN age_range_new VARCHAR(20) DEFAULT '全年龄段';
+
+-- 步骤3: 数据迁移
+UPDATE course_tags
+SET age_range_new = CASE
+    WHEN age_range = '3-4' THEN '3-4岁'
+    WHEN age_range = '4-5' THEN '4-5岁'
+    WHEN age_range = '5-6' THEN '5-6岁'
+    WHEN age_range = '6+' THEN '6+岁'
+    WHEN age_range = 'all' THEN '全年龄段'
+    ELSE COALESCE(age_range, '全年龄段')
+END;
+
+-- 步骤4: 验证数据迁移
+SELECT
+    age_range as old_format,
+    age_range_new as new_format,
+    COUNT(*) as count
+FROM course_tags
+GROUP BY age_range, age_range_new;
+
+-- 步骤5: 删除旧字段，重命名新字段（确保数据正确后执行）
+-- ALTER TABLE course_tags DROP COLUMN age_range;
+-- ALTER TABLE course_tags CHANGE COLUMN age_range_new age_range VARCHAR(20) DEFAULT '全年龄段';
+
+-- 步骤6: 更新索引
+-- DROP INDEX idx_course_tags_age ON course_tags;
+-- CREATE INDEX idx_course_tags_age ON course_tags(age_range, status);
+```
 
 ### schedule（课程安排表）
 

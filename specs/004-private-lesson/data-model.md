@@ -1,14 +1,23 @@
-# 数据模型： Private Lesson System
+# 数据模型：私教课程系统
 
-**Feature**: 004-private-lesson
+**功能**: 004-private-lesson
 **创建时间**: 2025-11-08
-**Version**: 1.0.0
+**版本**: v2.0.0 RuoYi架构重构
+**重构日期**: 2025-11-17
+**技术栈**: RuoYi-Vue-Pro + MyBatis-Plus + Redis
 
 ## Database Schema
 
 ### Overview
 
-私教课系统的数据模型采用五表设计，实现私教课仅浏览模式、咨询驱动预约、4维标签白名单匹配、运营后台录入预约的完整业务流程。系统严格遵循FR-042仅浏览模式和FR-040 4维标签匹配要求，确保用户只能浏览私教课信息并通过咨询流程进行预约。
+私教课系统的数据模型采用RuoYi-Vue-Pro架构设计，基于MyBatis-Plus实现五表设计，实现私教课仅浏览模式、咨询驱动预约、4维标签白名单匹配、运营后台录入预约的完整业务流程。系统严格遵循FR-042仅浏览模式和FR-040 4维标签匹配要求，确保用户只能浏览私教课信息并通过咨询流程进行预约。
+
+**RuoYi架构特性**：
+- **MyBatis-Plus集成**: 使用LambdaQueryWrapper进行查询优化
+- **Redis缓存**: Spring Cache + @Cacheable注解优化性能
+- **乐观锁机制**: @Version字段防止并发冲突
+- **审计功能**: BaseEntity提供创建时间、更新时间等审计字段
+- **数据权限**: 基于RuoYi的权限控制系统
 
 ### Entity Relationship Diagram
 
@@ -76,33 +85,123 @@
                             └─────────────────┘
 ```
 
-## Table Definitions
+## RuoYi-MyBatis-Plus 实体定义
 
-### private_instructor（私教教练表）
+### GymPrivateInstructor（私教教练表）
 
-**描述**：存储私教教练的基础信息和4维标签
+**描述**：存储私教教练的基础信息和4维标签，基于RuoYi-Vue-Pro架构设计
 
 **用途**：私教课浏览展示、4维标签匹配、咨询分配
 
-| 字段名 | 数据类型 | 约束 | 默认值 | 描述 | 索引 |
-|--------|----------|------|--------|------|------|
-| id | INT | PK, AUTO_INCREMENT | - | 教练ID | PRIMARY |
-| name | VARCHAR(50) | NOT NULL | - | 教练姓名 | INDEX |
-| avatar_url | VARCHAR(255) | NULL | NULL | 头像URL | - |
-| bio | TEXT | NULL | NULL | 教练简介 | - |
-| specialties | JSON | NULL | NULL | 擅长领域 | - |
-| price_per_hour | DECIMAL(10,2) | NULL | NULL | 每小时价格 | - |
-| level_range | VARCHAR(100) | NULL | NULL | 等级范围(JSON数组) | INDEX |
-| age_range | ENUM('3-4','4-5','5-6','6+','all') | DEFAULT 'all' | 年龄范围 | INDEX |
-| gender | ENUM('male','female','both') | DEFAULT 'both' | 性别要求 | INDEX |
-| course_type | ENUM('interest','professional','competition') | DEFAULT 'interest' | 课程类型 | INDEX |
-| skill_types | JSON | NULL | NULL | 技能类型(JSON数组) | - |
-| intensity_level | ENUM('light','medium','high') | DEFAULT 'medium' | 课程强度 | INDEX |
-| status | ENUM('active','inactive') | DEFAULT 'active' | 状态：在职/离职 | INDEX |
-| rating | DECIMAL(2,1) | DEFAULT NULL | 教练评分(0.0-5.0) | INDEX |
-| teaching_hours | INT | DEFAULT 0 | 授课时长 | - |
-| created_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 创建时间 | INDEX |
-| updated_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP ON UPDATE | 更新时间 | INDEX |
+#### MyBatis-Plus 实体类
+```java
+@Data
+@TableName("gym_private_instructor")
+@Accessors(chain = true)
+public class GymPrivateInstructor extends BaseEntity implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    @TableId(value = "instructor_id", type = IdType.AUTO)
+    private Long instructorId;
+
+    @TableField("name")
+    private String name;
+
+    @TableField("avatar_url")
+    private String avatarUrl;
+
+    @TableField("bio")
+    private String bio;
+
+    @TableField("specialties")
+    private String specialties; // JSON格式存储
+
+    @TableField("price_per_hour")
+    private BigDecimal pricePerHour;
+
+    @TableField("level_range")
+    private String levelRange; // JSON格式，支持4维匹配
+
+    @TableField("age_range")
+    private String ageRange;
+
+    @TableField("gender")
+    private String gender;
+
+    @TableField("course_type")
+    private String courseType;
+
+    @TableField("skill_types")
+    private String skillTypes; // JSON格式
+
+    @TableField("intensity_level")
+    private String intensityLevel;
+
+    @TableField("status")
+    private String status; // active/inactive
+
+    @TableField("rating")
+    private BigDecimal rating;
+
+    @TableField("teaching_hours")
+    private Integer teachingHours;
+
+    @Version
+    @TableField("version")
+    private Integer version;
+
+    @TableField("del_flag")
+    private String delFlag; // 软删除标识
+
+    @TableField("create_by")
+    private String createBy;
+
+    @TableField("create_time")
+    private LocalDateTime createTime;
+
+    @TableField("update_by")
+    private String updateBy;
+
+    @TableField("update_time")
+    private LocalDateTime updateTime;
+}
+```
+
+#### 数据库表结构
+```sql
+CREATE TABLE `gym_private_instructor` (
+  `instructor_id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '教练ID',
+  `name` VARCHAR(50) NOT NULL COMMENT '教练姓名',
+  `avatar_url` VARCHAR(255) DEFAULT NULL COMMENT '头像URL',
+  `bio` TEXT DEFAULT NULL COMMENT '教练简介',
+  `specialties` VARCHAR(1000) DEFAULT NULL COMMENT '擅长领域(JSON格式)',
+  `price_per_hour` DECIMAL(10,2) DEFAULT NULL COMMENT '每小时价格',
+  `level_range` VARCHAR(100) DEFAULT NULL COMMENT '等级范围(JSON数组)',
+  `age_range` VARCHAR(20) DEFAULT '全年龄段' COMMENT '年龄范围',
+  `gender` VARCHAR(10) DEFAULT 'both' COMMENT '性别要求',
+  `course_type` VARCHAR(20) DEFAULT 'interest' COMMENT '课程类型',
+  `skill_types` VARCHAR(1000) DEFAULT NULL COMMENT '技能类型(JSON数组)',
+  `intensity_level` VARCHAR(10) DEFAULT 'medium' COMMENT '课程强度',
+  `status` CHAR(1) DEFAULT '0' COMMENT '状态(0正常 1停用)',
+  `rating` DECIMAL(2,1) DEFAULT NULL COMMENT '教练评分',
+  `teaching_hours` INT(11) DEFAULT 0 COMMENT '授课时长',
+  `version` INT(11) DEFAULT 0 COMMENT '乐观锁版本号',
+  `del_flag` CHAR(1) DEFAULT '0' COMMENT '删除标志(0代表存在 2代表删除)',
+  `create_by` VARCHAR(64) DEFAULT '' COMMENT '创建者',
+  `create_time` DATETIME DEFAULT NULL COMMENT '创建时间',
+  `update_by` VARCHAR(64) DEFAULT '' COMMENT '更新者',
+  `update_time` DATETIME DEFAULT NULL COMMENT '更新时间',
+  `remark` VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (`instructor_id`),
+  KEY `idx_name` (`name`),
+  KEY `idx_status` (`status`),
+  KEY `idx_level_range` (`level_range`(100)),
+  KEY `idx_age_range` (`age_range`),
+  KEY `idx_gender` (`gender`),
+  KEY `idx_course_type` (`course_type`),
+  KEY `idx_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='私教教练表';
+```
 
 **唯一约束**：
 - `uk_name` (`name`) - 教练姓名唯一
@@ -125,7 +224,7 @@
 | id | INT | PK, AUTO_INCREMENT | - | 标签ID | PRIMARY |
 | course_id | INT | NOT NULL | - | 课程ID | UNIQUE |
 | level_range | VARCHAR(100) | NULL | NULL | 等级范围(JSON数组,如["L1+", "L2"]) | INDEX |
-| age_range | ENUM('3-4','4-5','5-6','6+','all') | DEFAULT 'all' | 年龄范围 | INDEX |
+| age_range | VARCHAR(20) | DEFAULT '全年龄段' | 年龄范围(4-6岁/成人/全年龄段等) | INDEX |
 | gender | ENUM('male','female','both') | DEFAULT 'both' | 性别要求 | INDEX |
 | course_type | ENUM('interest','professional','competition','private') | NOT NULL | 'private' | 课程类型 | INDEX |
 | skill_types | JSON | NULL | NULL | 技能类型(JSON数组) | - |
@@ -311,14 +410,73 @@
 
 ---
 
-## API Contracts
+## RuoYi架构API设计
 
-### Private Lesson Browse API
+### 私教课程管理API
 
-#### GET /api/v1/private-lessons
+#### GET /gym/private/instructors/matched
 **方法**: GET
-**路径**: /api/v1/private-lessons
-**描述**: 获取私教课列表（4维标签匹配）
+**路径**: /gym/private/instructors/matched
+**描述**: 获取匹配的私教教练列表（RuoYi架构 + 4维标签匹配）
+
+**Controller实现**:
+```java
+@RestController
+@RequestMapping("/gym/private/instructors")
+@Api(tags = "私教教练管理")
+@RequiredArgsConstructor
+public class GymPrivateInstructorController extends BaseController {
+
+    private final IGymPrivateInstructorService instructorService;
+
+    @GetMapping("/matched")
+    @ApiOperation("获取匹配的私教教练列表")
+    @PreAuthorize("@ss.hasPermi('gym:private:instructor:list')")
+    public TableDataInfo<GymPrivateInstructorVO> getMatchedInstructors(GymPrivateInquiryQuery query) {
+        startPage();
+        List<GymPrivateInstructorVO> list = instructorService.getMatchedInstructors(query);
+        return getDataTable(list);
+    }
+}
+```
+
+**查询参数**:
+```json
+{
+  "profileId": 123,
+  "level": "L2",
+  "ageRange": "4-5岁",
+  "gender": "male",
+  "courseType": "interest"
+}
+```
+
+**响应格式**:
+```json
+{
+  "code": 200,
+  "msg": "查询成功",
+  "total": 15,
+  "rows": [
+    {
+      "instructorId": 1,
+      "name": "张教练",
+      "avatarUrl": "https://example.com/avatar.jpg",
+      "bio": "10年体操教学经验",
+      "specialties": ["翻滚", "平衡木"],
+      "pricePerHour": 600.00,
+      "levelRange": ["L1+", "L2"],
+      "ageRange": "4-5",
+      "gender": "both",
+      "courseType": "interest",
+      "matchScore": 100.0,
+      "validationResult": "whitelist_passed",
+      "status": "0",
+      "createTime": "2025-11-08 10:00:00"
+    }
+  ]
+}
+```
 
 **Query Parameters**:
 ```
@@ -836,7 +994,7 @@ CREATE TABLE `private_instructor` (
   `specialties` JSON DEFAULT NULL COMMENT '擅长领域',
   `price_per_hour` DECIMAL(10,2) DEFAULT NULL COMMENT '每小时价格',
   `level_range` VARCHAR(100) DEFAULT NULL COMMENT '等级范围(JSON数组,如["L1+", "L2"])',
-  `age_range` ENUM('3-4','4-5','5-6','6+','all') DEFAULT 'all' COMMENT '年龄范围',
+  `age_range` VARCHAR(20) DEFAULT '全年龄段' COMMENT '年龄范围(4-6岁/成人/全年龄段等)',
   `gender` ENUM('male','female','both') DEFAULT 'both' COMMENT '性别要求',
   `course_type` ENUM('interest','professional','competition') DEFAULT 'interest' COMMENT '课程类型',
   `skill_types` JSON DEFAULT NULL COMMENT '技能类型(JSON数组)',
@@ -863,10 +1021,10 @@ CREATE TABLE `private_instructor` (
 CREATE TABLE `private_course_tags` (
   `id` INT PRIMARY KEY AUTO_INCREMENT COMMENT '标签ID',
   `instructor_id` INT NOT NULL COMMENT '教练ID',
-  `level_range` VARCHAR(100) DEFAULT NULL COMMENT '等级范围(JSON数组,如["L1+", "L2"])',
-  `age_range` ENUM('3-4','4-5','5-6','6+','all') DEFAULT 'all' COMMENT '年龄范围',
+  `level_range` VARCHAR(100) DEFAULT NULL COMMENT '等级范围(如L1-L3, L2+, JSON格式)',
+  `age_range` VARCHAR(20) DEFAULT '全年龄段' COMMENT '年龄范围(4-6岁/成人/全年龄段等)',
   `gender` ENUM('male','female','both') DEFAULT 'both' COMMENT '性别要求',
-  `course_type` ENUM('interest','professional','competition','private') NOT NULL DEFAULT 'private' COMMENT '课程类型',
+  `course_type` ENUM('private') NOT NULL DEFAULT 'private' COMMENT '课程类型(私教课固定为private)',
   `skill_types` JSON DEFAULT NULL COMMENT '技能类型(JSON数组)',
   `intensity_level` ENUM('light','medium','high') DEFAULT 'medium' COMMENT '课程强度',
   `main_instructor` VARCHAR(50) DEFAULT NULL COMMENT '主教老师',
@@ -1037,15 +1195,15 @@ CREATE TABLE `coach_schedule` (
 ```sql
 -- 插入测试教练数据
 INSERT INTO `private_instructor` (`name`, `bio`, `specialties`, `price_per_hour`, `level_range`, `age_range`, `gender`, `course_type`, `skill_types`, `rating`, `teaching_hours`) VALUES
-('张教练', '10年体操教学经验，专业竞技体操背景', '["翻滚", "平衡木", "自由体操"]', 600.00, '["L1+", "L2", "L2+"]', '4-6', 'both', 'interest', '["翻滚", "平衡木"]', 4.8, 1200),
-('李教练', '8年体操教学经验，儿童心理学专家', '["基础训练", "兴趣培养"]', 500.00, '["L1", "L1+"]', '3-5', 'both', 'interest', '["基础训练", "兴趣培养"]', 4.6, 980),
-('王教练', '12年体操教学经验，国家一级运动员', '["竞技体操", "高难度技巧"]', 800.00, '["L3", "L3+", "L4"]', '6+', 'both', 'professional', '["竞技体操", "高难度技巧"]', 4.9, 1500);
+('张教练', '10年体操教学经验，专业竞技体操背景', '["翻滚", "平衡木", "自由体操"]', 600.00, '["L1+", "L2", "L2+"]', '4-6岁', 'both', 'interest', '["翻滚", "平衡木"]', 4.8, 1200),
+('李教练', '8年体操教学经验，儿童心理学专家', '["基础训练", "兴趣培养"]', 500.00, '["L1", "L1+"]', '3-5岁', 'both', 'interest', '["基础训练", "兴趣培养"]', 4.6, 980),
+('王教练', '12年体操教学经验，国家一级运动员', '["竞技体操", "高难度技巧"]', 800.00, '["L3", "L3+", "L4"]', '6+岁', 'both', 'professional', '["竞技体操", "高难度技巧"]', 4.9, 1500);
 
 -- 为教练创建课程标签
 INSERT INTO `private_course_tags` (`instructor_id`, `level_range`, `age_range`, `gender`, `course_type`, `skill_types`, `intensity_level`, `main_instructor`, `popularity`, `pricing_category`) VALUES
-(1, '["L1+", "L2", "L2+"]', '4-6', 'both', 'interest', '["翻滚", "平衡木"]', 'medium', '张教练', 'hot', 'private_1v1'),
-(2, '["L1", "L1+"]', '3-5', 'both', 'interest', '["基础训练", "兴趣培养"]', 'light', '李教练', 'normal', 'private_1v1'),
-(3, '["L3", "L3+", "L4"]', '6+', 'both', 'professional', '["竞技体操", "高难度技巧"]', 'high', '王教练', 'hot', 'private_1v1');
+(1, '["L1+", "L2", "L2+"]', '4-6岁', 'both', 'interest', '["翻滚", "平衡木"]', 'medium', '张教练', 'hot', 'private_1v1'),
+(2, '["L1", "L1+"]', '3-5岁', 'both', 'interest', '["基础训练", "兴趣培养"]', 'light', '李教练', 'normal', 'private_1v1'),
+(3, '["L3", "L3+", "L4"]', '6+岁', 'both', 'professional', '["竞技体操", "高难度技巧"]', 'high', '王教练', 'hot', 'private_1v1');
 
 -- 创建教练排班
 INSERT INTO `coach_schedule` (`instructor_id`, `day_of_week`, `start_time`, `end_time`, `schedule_type`) VALUES
@@ -1058,6 +1216,53 @@ INSERT INTO `coach_schedule` (`instructor_id`, `day_of_week`, `start_time`, `end
 (3, 1, '16:00:00', '20:00:00', 'regular'),
 (3, 3, '16:00:00', '20:00:00', 'regular'),
 (3, 5, '16:00:00', '20:00:00', 'regular');
+```
+
+#### 数据迁移脚本
+```sql
+-- =====================================================
+-- 统一4维标签匹配格式数据迁移脚本 (v1.0.0 → v1.1.0)
+-- =====================================================
+
+-- 1. 更新course_tags表 (MVP-2A)
+-- 将age_range从ENUM迁移到VARCHAR
+UPDATE `course_tags` SET `age_range` = '4-6岁' WHERE `age_range` IN ('4-5', '5-6');
+UPDATE `course_tags` SET `age_range` = '3-4岁' WHERE `age_range` = '3-4';
+UPDATE `course_tags` SET `age_range` = '6+岁' WHERE `age_range` = '6+';
+UPDATE `course_tags` SET `age_range` = '全年龄段' WHERE `age_range` = 'all';
+
+-- 2. 更新private_instructor表 (MVP-4)
+UPDATE `private_instructor` SET `age_range` = '4-6岁' WHERE `age_range` IN ('4-5', '5-6');
+UPDATE `private_instructor` SET `age_range` = '6+岁' WHERE `age_range` = '6+';
+UPDATE `private_instructor` SET `age_range` = '全年龄段' WHERE `age_range` = 'all';
+
+-- 3. 更新private_course_tags表 (MVP-4)
+UPDATE `private_course_tags` SET `age_range` = '4-6岁' WHERE `age_range` IN ('4-5', '5-6');
+UPDATE `private_course_tags` SET `age_range` = '6+岁' WHERE `age_range` = '6+';
+
+-- 4. 验证迁移结果
+SELECT 'course_tags_age_range' as table_name, age_range, COUNT(*) as count
+FROM course_tags GROUP BY age_range;
+SELECT 'private_instructor_age_range' as table_name, age_range, COUNT(*) as count
+FROM private_instructor GROUP BY age_range;
+SELECT 'private_course_tags_age_range' as table_name, age_range, COUNT(*) as count
+FROM private_course_tags GROUP BY age_range;
+
+-- 5. 创建4维匹配JSON Schema验证表 (可选)
+CREATE TABLE IF NOT EXISTS `four_d_schema_validation` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `dimension_name` VARCHAR(20) NOT NULL,
+  `validation_pattern` VARCHAR(100) NOT NULL,
+  `valid_values` JSON,
+  `description` TEXT,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='4维标签格式验证规则';
+
+INSERT INTO `four_d_schema_validation` (`dimension_name`, `validation_pattern`, `valid_values`, `description`) VALUES
+('level_range', '^L[0-9]+(-L[0-9]+)?([+,]L[0-9]+)*$', NULL, '等级范围格式：L1-L3, L2+, ["L1+", "L2"]'),
+('age_range', '^([0-9]+-[0-9]+岁|[0-9]+岁|成人|全年龄段)$', NULL, '年龄范围格式：4-6岁, 6+岁, 成人, 全年龄段'),
+('gender', '^(male|female|both)$', '["male", "female", "both"]', '性别要求'),
+('course_type', '^(interest|professional|trial|private)$', '["interest", "professional", "trial", "private"]', '课程类型');
 ```
 
 ### Rollback Plan

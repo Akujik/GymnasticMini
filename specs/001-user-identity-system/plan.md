@@ -4,6 +4,35 @@
 **创建时间**: 2025-10-26
 **状态**: Draft
 
+## Architecture Overview
+
+### 统一用户身份验证架构
+
+#### 设计原则
+- **外键关系完整性**：account.profile_id为必填字段，确保数据一致性
+- **权限验证统一化**：所有MVP模块使用相同的权限检查机制
+- **多档案管理**：支持家长管理多个孩子的复杂场景
+- **虚拟年龄支持**：特殊情况下的课程匹配辅助功能
+
+#### 身份验证流程
+```
+用户打开小程序 → 微信静默登录 → 获取OpenID → 创建/验证账号 → JWT Token返回 → 所有API调用验证Token
+```
+
+#### 权限验证机制
+```python
+# 权限检查装饰器
+@require_profile_permission('read')
+def get_profile(profile_id: int):
+    # 验证用户对档案的访问权限
+    pass
+
+@require_profile_permission('book')
+def create_booking(profile_id: int):
+    # 验证用户对档案的预约权限
+    pass
+```
+
 ## Technical Context
 
 ### Technology Stack

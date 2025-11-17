@@ -1,37 +1,56 @@
-# Feature Specification: Tag System (Design Reference)
+# RuoYi功能规格：008-tag-system
 
-**Feature ID**: 008-tag-system
-**Feature Name**: 标签系统设计参考
-**Status**: Design Reference Only (由MVP-2A实现)
-**Created**: 2025-10-31
-**Version**: 1.0.0
-**Purpose**: 定义完整的标签体系和匹配规则，供MVP-2A/MVP-5参考
+**功能ID**: 008-tag-system
+**功能名称**: 标签系统设计参考
+**状态**: 设计参考文档（由MVP-2A实现）
+**创建时间**: 2025-10-31
+**重构日期**: 2025-11-17
+**版本**: v2.0.0 RuoYi架构重构
+**技术栈**: RuoYi-Vue-Pro + MyBatis-Plus + Redis + Vue3
+**目的**: 基于RuoYi企业级架构定义完整的标签体系和智能匹配算法，为MVP-2A/MVP-5提供参考
 
 ---
 
 ## 概述
 
-标签系统是百适体操馆项目的核心功能，用于实现智能化的课程推荐和学员管理。系统通过多维度的标签匹配，为每位学员推荐最合适的课程，同时为运营提供精准的数据分析基础。
+基于RuoYi-Vue-Pro企业级架构的标签系统是百适体操馆项目的核心功能，通过MyBatis-Plus + Redis实现高性能的智能课程推荐和学员管理。系统采用3维硬匹配+软标签排序算法，结合Spring @Cacheable缓存优化，为每位学员精准推荐最适合的课程，同时为RuoYi管理后台提供数据驱动的运营分析基础。
 
-### 设计目标
+### RuoYi架构设计目标
 
-1. **智能推荐**：基于学员标签自动匹配适合的课程
-2. **精准营销**：支持基于发展标签的精准课程推荐
-3. **数据驱动**：为运营决策提供数据支撑
-4. **用户体验**：提升学员和家长的使用体验
+1. **企业级智能推荐**：基于MyBatis-Plus + Redis的学员标签自动匹配算法
+2. **精准营销引擎**：支持基于发展标签的RuoYi级联课程推荐系统
+3. **数据驱动决策**：为RuoYi管理后台提供实时数据分析和可视化
+4. **用户体验优化**：Vue3 + Element Plus响应式界面提升使用体验
 
-### 设计原则
+### RuoYi技术架构原则
 
-- **简化优先**：标签系统设计简洁，易于理解和使用
-- **数据完整性**：确保标签数据的准确性和一致性
-- **可扩展性**：支持未来新增标签维度
-- **性能优化**：标签查询和匹配算法高效
+- **企业级标准**：遵循RuoYi-Vue-Pro开发规范和设计模式
+- **高性能架构**：MyBatis-Plus + Redis缓存 + Spring Boot性能优化
+- **可扩展设计**：支持RuoYi模块化开发和微服务架构演进
+- **安全可靠**：Spring Security权限控制和RuoYi审计日志完整追踪
 
 ---
 
-## 标签体系架构
+## RuoYi-Vue-Pro标签体系架构
 
-### 学员标签维度（5个核心维度）
+### RuoYi技术栈架构
+```
+┌─────────────────────────────────────────────────────────┐
+│ Vue3 + Element Plus 前端标签管理界面                     │
+├─────────────────────────────────────────────────────────┤
+│ RuoYi Controller层：标签匹配RESTful API                  │
+├─────────────────────────────────────────────────────────┤
+│ RuoYi Service层：Spring @Transactional + @Cacheable       │
+├─────────────────────────────────────────────────────────┤
+│ MyBatis-Plus Mapper层：LambdaQueryWrapper查询优化       │
+├─────────────────────────────────────────────────────────┤
+│ Redis缓存层：Spring Cache + 3维匹配结果缓存             │
+├─────────────────────────────────────────────────────────┤
+│ MySQL数据层：course_tags表 + tag_match_log表            │
+└─────────────────────────────────────────────────────────┘
+```
+
+### RuoYi学员标签维度（MyBatis-Plus实体设计）
 
 #### 1. 基础属性标签
 - **年龄标签**：基于birthday自动计算
@@ -66,14 +85,55 @@
   - spouse：配偶
   - parent：父母
 
-#### 5. 自动计算标签
-- **年龄标签**：基于birthday实时计算
-- **活跃度标签**：基于最近预约记录
-- **消费等级标签**：基于消费金额统计
+#### 5. RuoYi自动计算标签
+- **年龄标签**：基于birthday实时计算（@Scheduled定时任务）
+- **活跃度标签**：基于最近预约记录（MyBatis-Plus LambdaQueryWrapper统计）
+- **消费等级标签**：基于消费金额统计（Redis缓存 + Spring Batch批处理）
 
-### 课程标签维度（6个核心维度）
+**RuoYi学员标签实体设计**：
+```java
+@Data
+@TableName("gym_student_profile")
+public class GymStudentProfile extends BaseEntity {
 
-#### 1. 基础属性标签
+    @TableId(value = "profile_id", type = IdType.AUTO)
+    private Long profileId;
+
+    @TableField("student_name")
+    private String studentName;
+
+    @TableField("birthday")
+    private LocalDate birthday; // 自动计算年龄标签
+
+    @TableField("gender")
+    private String gender; // male/female
+
+    @TableField("level")
+    private String level; // L1-L6，支持跨级L1+
+
+    @TableField("development_tag")
+    private String developmentTag; // interest/professional/competition/long_term
+
+    @TableField("privilege_tag")
+    private String privilegeTag; // old_user/new_user/friend_discount
+
+    @Version
+    @TableField("version")
+    private Integer version;
+
+    // 虚拟字段 - 不存储在数据库，通过@Transient注解
+    @TableField(exist = false)
+    private String ageTag; // 基于birthday自动计算
+
+    @TableField(exist = false)
+    private String activeStatusTag; // 基于预约记录计算
+
+    @TableField(exist = false)
+    private String consumptionLevelTag; // 基于消费金额计算
+}
+```
+
+#### 1. RuoYi基础属性标签
 - **等级范围**：支持跨级设置
   - 支持JSON数组：["L1+", "L2"]
   - 支持单一等级："L3"
@@ -115,41 +175,137 @@
   - normal：常规课程
   - cold：冷门课程
 
+**RuoYi课程标签实体设计**：
+```java
+@Data
+@TableName("gym_course_tags")
+public class GymCourseTags extends BaseEntity {
+
+    @TableId(value = "tag_id", type = IdType.AUTO)
+    private Long tagId;
+
+    @TableField("course_id")
+    private Long courseId;
+
+    @TableField("level_range")
+    private String levelRange; // JSON: ["L1+", "L2"]
+
+    @TableField("age_range")
+    private String ageRange; // 3-4/4-5/5-6/6+/all
+
+    @TableField("gender")
+    private String gender; // male/female/both（强制验证）
+
+    @TableField("course_type")
+    private String courseType; // 软标签：interest/professional/competition/trial/private/camp
+
+    @TableField("skill_types")
+    private String skillTypes; // JSON: ["flexibility", "coordination"]
+
+    @TableField("intensity_level")
+    private String intensityLevel; // light/medium/high
+
+    @TableField("main_instructor")
+    private String mainInstructor;
+
+    @TableField("has_assistant")
+    private Boolean hasAssistant;
+
+    @TableField("popularity")
+    private String popularity; // hot/normal/cold
+
+    @TableField("waitlist_capacity")
+    private Integer waitlistCapacity; // 候补队列容量
+
+    @Version
+    @TableField("version")
+    private Integer version;
+
+    @TableField("del_flag")
+    private String delFlag;
+}
+```
+
+**RuoYi标签匹配Service层示例**：
+```java
+@Service
+@Log(title = "标签智能匹配", businessType = BusinessType.OTHER)
+@Slf4j
+public class GymTagMatchServiceImpl implements IGymTagMatchService {
+
+    @Autowired
+    private IGymCourseTagsService courseTagsService;
+
+    @Autowired
+    private IGymStudentProfileService studentProfileService;
+
+    @Override
+    @Cacheable(value = "tagMatches", key = "#profileId + '_' + #week",
+               unless = "#result == null || #result.isEmpty()")
+    public List<GymCourseMatchDTO> getMatchedCourses(Long profileId, Integer week) {
+        // 1. 获取学员标签信息（Redis缓存优化）
+        GymStudentProfile profile = studentProfileService.getById(profileId);
+
+        // 2. 3维硬匹配查询（等级 + 年龄 + 性别）
+        LambdaQueryWrapper<GymCourseTags> wrapper = new LambdaQueryWrapper<>();
+        wrapper.apply("JSON_CONTAINS(level_range, '{0}')", profile.getLevel())
+               .eq(GymCourseTags::getAgeRange, calculateAgeRange(profile.getBirthday()))
+               .in(GymCourseTags::getGender, Arrays.asList(profile.getGender(), "both"));
+
+        List<GymCourseTags> matchedTags = courseTagsService.list(wrapper);
+
+        // 3. 软标签排序推荐
+        return sortBySoftTags(matchedTags, profile);
+    }
+
+    private List<GymCourseMatchDTO> sortBySoftTags(List<GymCourseTags> tags,
+                                                  GymStudentProfile profile) {
+        // 软标签排序算法：类型匹配度(40%) + 发展标签(30%) + 热门程度(20%) + 时间(10%)
+        return tags.stream()
+                .map(tag -> calculateMatchScore(tag, profile))
+                .sorted(Comparator.comparing(GymCourseMatchDTO::getRecommendationScore).reversed())
+                .collect(Collectors.toList());
+    }
+}
+```
+
 ---
 
-## 标签匹配规则
+## RuoYi 3维硬匹配+软标签排序算法
 
-### 规则1：4维标签白名单匹配规则（FR-040）
+### 规则1：3维硬匹配白名单规则（FR-040）(根据Q4,Q11,Q16,Q19更新)
 
-采用严格的4维白名单验证机制，只有同时满足所有4个维度的课程才会显示：
+采用严格的3维硬匹配验证机制，只有同时满足所有3个硬性维度的课程才会显示：
 
-#### 4维验证框架
-**所有课程必须通过以下4个维度的白名单验证**：
+#### 3维硬匹配验证框架
+**所有课程必须通过以下3个硬性维度的白名单验证**：
 1. **等级维度** (Level): 学员等级必须在课程等级范围内
 2. **年龄维度** (Age): 学员年龄必须在课程年龄范围内
 3. **性别维度** (Gender): 学员性别必须符合课程性别要求（强制验证）
-4. **类型维度** (Type): 课程类型必须匹配学员目标类型
 
-#### L3以下学员（基础阶段）- 4维验证
-- **匹配条件**：等级 + 年龄 + 性别 + 类型（4维全部强制匹配）
-- **逻辑**：低龄学员需要完整的4维白名单验证
-- **示例**：5岁L2男性学员 → 匹配等级包含L2 AND 年龄4-5岁 AND 男性/不限 AND 兴趣类课程
+**注意**: 课程类型(course_type)降级为软标签，仅用于推荐排序和定价，不参与硬匹配
 
-#### L3及以上学员（进阶阶段）- 4维验证
-- **匹配条件**：等级 + 性别 + 类型 + 年龄（4维全部强制匹配）
-- **逻辑**：高龄学员同样需要完整的4维白名单验证
-- **示例**：8岁L4男性学员 → 匹配等级包含L4 AND 男性/不限 AND 专业/竞技类课程 AND 年龄6+岁
+#### L3以下学员（基础阶段）- 3维硬匹配
+- **匹配条件**：等级 + 年龄 + 性别（3维全部强制匹配）
+- **逻辑**：低龄学员需要3维硬匹配验证，类型标签作为软标签推荐
+- **示例**：5岁L2男性学员 → 匹配等级包含L2 AND 年龄4-5岁 AND 男性/不限，然后按类型标签排序推荐
 
-#### 特殊课程类型的4维验证
-- **体验课 (trial)**：年龄 + 性别 + OpenID限制 + 类型=体验课
-- **私教课 (private)**：等级 + 性别 + 类型=私教 + 年龄（可选）
-- **长训班 (long_term)**：4维全验证 + 发展标签匹配
+#### L3及以上学员（进阶阶段）- 3维硬匹配
+- **匹配条件**：等级 + 年龄 + 性别（3维全部强制匹配）
+- **逻辑**：高龄学员同样需要3维硬匹配验证
+- **示例**：8岁L4男性学员 → 匹配等级包含L4 AND 年龄6+岁 AND 男性/不限，然后按类型和发展标签排序推荐
+
+#### 特殊课程类型的3维硬匹配
+- **体验课 (trial)**：等级 + 年龄 + 性别（硬匹配）+ OpenID限制，类型作为软标签
+- **私教课 (private)**：等级 + 年龄 + 性别（硬匹配），类型=private作为软标签优先推荐
+- **长训班 (long_term)**：3维硬匹配 + 发展标签作为软标签排序
 
 #### 白名单验证逻辑
 ```
-// 4维白名单验证算法
-if (等级匹配 AND 年龄匹配 AND 性别匹配 AND 类型匹配) {
-  匹配结果 = 100%  // 白名单通过
+// 3维硬匹配验证算法
+if (等级匹配 AND 年龄匹配 AND 性别匹配) {
+  匹配结果 = 100%  // 硬匹配通过，进入推荐列表
+  // 然后按软标签(类型、发展等)排序推荐
 } else {
   匹配结果 = 0%    // 任一维度不匹配则排除
 }
@@ -195,63 +351,66 @@ if (等级匹配 AND 年龄匹配 AND 性别匹配 AND 类型匹配) {
 - 已正式报名的学员
 - 年龄不符合的学员
 
-### 规则4：100%完全匹配规则
+### 规则4：3维硬匹配 + 软标签排序规则
 
-采用严格的完全匹配逻辑，只有满足所有必要条件的课程才会被推荐：
+采用3维硬匹配+软标签排序的逻辑，硬匹配决定是否显示，软标签决定推荐优先级：
 
 #### 匹配条件
-- **基础属性必须完全匹配**：等级、年龄、性别必须全部符合要求
-- **不使用权重计算**：只有匹配（100%）和不匹配（0%）两种结果
-- **优先级排序**：热门程度 > 开课时间 > 创建时间
+- **硬匹配必须完全通过**：等级、年龄、性别必须全部符合要求
+- **软标签排序推荐**：通过硬匹配后，按类型、发展等软标签排序推荐
+- **推荐优先级**：类型匹配度 > 发展标签匹配度 > 热门程度 > 开课时间
 
 #### 匹配逻辑
 ```
-if (等级匹配 AND 年龄/性别匹配) {
-  匹配结果 = 100%  // 完全匹配
+if (等级匹配 AND 年龄匹配 AND 性别匹配) {
+  硬匹配结果 = 100%  // 硬匹配通过，进入推荐池
+  // 计算软标签推荐分数
+  推荐分数 = 类型匹配分数 * 40% + 发展标签分数 * 30% + 热门分数 * 20% + 时间分数 * 10%
 } else {
-  匹配结果 = 0%    // 不匹配
+  匹配结果 = 0%      // 硬匹配失败，不显示
 }
 ```
 
 ---
 
-### 4维匹配规则说明
+### 3维硬匹配规则说明 (根据Q4,Q11,Q16,Q19更新)
 
-#### 完整的4维验证逻辑
-采用100%白名单验证规则，只有同时满足所有4个维度条件的课程才会显示：
+#### 完整的3维硬匹配+软标签排序逻辑
+采用硬匹配过滤+软标签排序的规则，硬匹配决定是否显示，软标签决定推荐顺序：
 
-1. **所有学员**：等级 + 年龄 + 性别 + 类型（4维全部强制验证）
-2. **体验课特殊规则**：年龄 + 性别 + OpenID限制 + 类型=trial
-3. **私教课特殊规则**：等级 + 性别 + 类型=private + 年龄（根据课程设置）
+1. **所有学员**：等级 + 年龄 + 性别（3维硬匹配强制验证）
+2. **软标签排序**：通过硬匹配后，按类型匹配度、发展标签匹配度、热门程度、开课时间排序
+3. **体验课特殊规则**：3维硬匹配 + OpenID限制，类型trial作为软标签优先推荐
+4. **私教课特殊规则**：3维硬匹配，类型private作为软标签优先推荐
 
-#### 4维白名单排序优先级
-当多个课程都通过4维验证时，按以下优先级排序：
-1. **热门程度**：hot > normal > cold
-2. **开课时间**：时间近的优先
-3. **创建时间**：新课程优先
-4. **4维匹配度**：4个维度全部匹配的优先（虽然都是100%，但按验证精度排序）
+#### 软标签推荐排序优先级
+当多个课程都通过3维硬匹配时，按以下优先级排序：
+1. **类型匹配度**：课程类型与学员发展目标匹配程度（40%权重）
+2. **发展标签匹配度**：发展特征标签匹配程度（30%权重）
+3. **热门程度**：hot > normal > cold（20%权重）
+4. **开课时间**：时间近的优先（10%权重）
 
-#### 4维验证边界情况处理
+#### 3维硬匹配边界情况处理
 
-##### 1. 不匹配的情况（白名单失败）
-以下任一条件不满足，课程都不会显示在推荐列表中：
+##### 1. 硬匹配失败的情况（不显示）
+以下任一硬匹配条件不满足，课程都不会显示在推荐列表中：
 - 学员等级不在课程等级范围内
 - 学员年龄超出课程年龄范围
 - 学员性别与课程性别要求不符
-- 课程类型与学员目标类型不匹配
 - 跨级标签不匹配
-- **特别注意**：任一维度失败 = 直接排除，不显示给用户
+- **特别注意**：任一硬匹配维度失败 = 直接排除，不显示给用户
 
 ##### 2. 缺失标签处理
 - **学员标签缺失**：提示完善档案信息后再查看课程
-- **课程标签缺失**：运营人员必须完善所有4维标签才能正常显示
+- **课程标签缺失**：运营人员必须完善所有3维硬匹配标签才能正常显示
 - **性别标签未设置**：系统强制要求设置，默认为"both"但需要明确确认
+- **软标签缺失**：影响推荐排序，但不影响是否显示
 
-##### 3. 4维验证性能优化
-- **4维索引**：为等级、年龄、性别、类型4个字段建立复合索引
-- **分步过滤**：按过滤效率从高到低进行4维验证
-- **缓存策略**：缓存4维匹配结果15分钟
-- **分页加载**：每次最多显示20个通过4维验证的课程
+##### 3. 3维硬匹配性能优化
+- **3维索引**：为等级、年龄、性别3个字段建立复合索引
+- **分步过滤**：先硬匹配过滤，再软标签排序
+- **缓存策略**：缓存硬匹配结果15分钟，软标签排序实时计算
+- **分页加载**：每次最多显示20个通过硬匹配的课程
 
 ---
 
@@ -298,15 +457,14 @@ CREATE TABLE `course_tags` (
   `level_range` VARCHAR(100) DEFAULT NULL COMMENT '等级范围(JSON数组,如["L1+","L2"])',
   `age_range` ENUM('3-4', '4-5', '5-6', '6+', 'all') DEFAULT 'all' COMMENT '年龄范围',
   `gender` ENUM('male', 'female', 'both') NOT NULL DEFAULT 'both' COMMENT '性别要求（强制设置）',
-  `course_type` ENUM('interest', 'professional', 'competition', 'long_term', 'trial', 'private', 'camp') NOT NULL COMMENT '课程类型（4维验证）',
+  `course_type` ENUM('interest', 'professional', 'competition', 'long_term', 'trial', 'private', 'camp') NOT NULL COMMENT '课程类型（软标签，用于推荐排序）',
   `skill_types` JSON DEFAULT NULL COMMENT '技能类型(JSON数组)',
   `intensity_level` ENUM('light', 'medium', 'high') DEFAULT 'medium' COMMENT '课程强度',
   `main_instructor` VARCHAR(50) DEFAULT NULL COMMENT '主教老师',
   `has_assistant` BOOLEAN DEFAULT FALSE COMMENT '是否有助教',
   `popularity` ENUM('hot', 'normal', 'cold') DEFAULT 'normal' COMMENT '热门程度',
   `waitlist_capacity` INT NOT NULL DEFAULT 8 COMMENT '候补队列容量限制（FR-043）',
-  `gender_validation` ENUM('required', 'optional') NOT NULL DEFAULT 'required' COMMENT '性别验证级别（4维验证）',
-  `type_validation` ENUM('strict', 'flexible') NOT NULL DEFAULT 'strict' COMMENT '类型验证级别（4维验证）',
+  `gender_validation` ENUM('required', 'optional') NOT NULL DEFAULT 'required' COMMENT '性别验证级别（3维硬匹配）',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME ON UPDATE CURRENT_TIMESTAMP,
 
@@ -315,18 +473,18 @@ CREATE TABLE `course_tags` (
   INDEX `idx_course_type` (`course_type`),
   INDEX `idx_age_range` (`age_range`),
   INDEX `idx_gender` (`gender`),
-  INDEX `idx_4d_match` (`course_type`, `age_range`, `gender`), -- 4维验证复合索引
+  INDEX `idx_3d_match` (`age_range`, `gender`, `level_range`), -- 3维硬匹配复合索引
   INDEX `idx_waitlist_capacity` (`waitlist_capacity`),
   INDEX `idx_intensity_level` (`intensity_level`),
   INDEX `idx_popularity` (`popularity`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课程标签表（支持4维白名单验证和候补容量管理）';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课程标签表（支持3维硬匹配和软标签推荐排序）';
 ```
 
 **字段说明**：
 - `level_range`：支持跨级匹配，JSON格式存储多个等级
 - `age_range`：目标年龄段，支持灵活匹配
 - `gender`：性别要求（强制设置），both表示不限但仍需验证
-- `course_type`：课程类型（4维验证必需），影响匹配策略
+- `course_type`：课程类型（软标签），用于推荐排序，不参与硬匹配
 - `skill_types`：技能类型JSON数组，支持多技能标签
 - `intensity_level`：课程强度，影响推荐算法
 - `main_instructor`：主教老师，支持教练匹配
@@ -334,9 +492,8 @@ CREATE TABLE `course_tags` (
 - `popularity`：热门程度，影响推荐排序
 - **FR-043字段**：
   - `waitlist_capacity`：候补队列容量限制，默认8人
-- **4维验证字段**：
+- **3维硬匹配字段**：
   - `gender_validation`：性别验证级别，required=强制验证
-  - `type_validation`：类型验证级别，strict=严格白名单验证
 
 ### tag_match_log表
 
@@ -370,13 +527,13 @@ CREATE TABLE `tag_match_log` (
 - `match_rule`：应用的匹配规则类型
 - `algorithm_version`：算法版本，支持算法迭代
 
-**match_details结构示例（4维验证）**：
+**match_details结构示例（3维硬匹配+软标签）**：
 ```json
 {
-  "validation_type": "4d_whitelist",
+  "validation_type": "3d_hard_match_soft_tags",
   "overall_match": true,
   "match_score": 100.0,
-  "dimension_results": {
+  "hard_match_results": {
     "level_match": {
       "score": 100,
       "result": "matched",
@@ -394,35 +551,92 @@ CREATE TABLE `tag_match_log` (
       "result": "matched",
       "reason": "学员性别male符合课程性别要求both",
       "required": true
-    },
-    "type_match": {
-      "score": 100,
-      "result": "matched",
-      "reason": "学员目标类型interest匹配课程类型interest",
-      "required": true
     }
   },
-  "validation_summary": {
-    "total_dimensions": 4,
-    "passed_dimensions": 4,
-    "failed_dimensions": 0,
-    "validation_result": "whitelist_passed"
+  "soft_tag_scores": {
+    "course_type_match": {
+      "score": 95,
+      "result": "high_match",
+      "reason": "学员目标interest匹配课程类型interest",
+      "weight": 0.4
+    },
+    "development_match": {
+      "score": 90,
+      "result": "matched",
+      "reason": "发展标签匹配",
+      "weight": 0.3
+    },
+    "popularity_score": {
+      "score": 80,
+      "result": "normal",
+      "reason": "课程热门程度normal",
+      "weight": 0.2
+    },
+    "time_score": {
+      "score": 85,
+      "result": "good",
+      "reason": "开课时间合适",
+      "weight": 0.1
+    }
   },
-  "algorithm_version": "v2.0_4d"
+  "recommendation_score": 89.5,
+  "validation_summary": {
+    "hard_match_passed": true,
+    "total_hard_dimensions": 3,
+    "passed_hard_dimensions": 3,
+    "recommendation_rank": 1,
+    "algorithm_version": "v3.0_3d_soft"
+  }
 }
 ```
 
 ---
 
-## API设计
+## RuoYi-Vue-Pro API设计
 
-### 标签匹配引擎API
+### RuoYi Controller层标签匹配引擎API
 
-#### GET /api/v1/courses/match
+#### GET /gym/tag/courses/match（RuoYi标准路由）
+
+**RuoYi Controller设计**：
+```java
+@RestController
+@RequestMapping("/gym/tag")
+@Api(tags = "标签智能匹配")
+@RequiredArgsConstructor
+public class GymTagController extends BaseController {
+
+    private final IGymTagMatchService tagMatchService;
+
+    @GetMapping("/courses/match")
+    @ApiOperation("获取智能匹配课程列表")
+    @PreAuthorize("@ss.hasPermi('gym:tag:match')")
+    @Log(title = "标签智能匹配", businessType = BusinessType.OTHER)
+    public AjaxResult getMatchedCourses(@RequestParam Long profileId,
+                                       @RequestParam(defaultValue = "1") Integer week,
+                                       @RequestParam(defaultValue = "20") Integer limit) {
+        // 1. 参数验证
+        if (profileId == null) {
+            return error("学员档案ID不能为空");
+        }
+
+        // 2. 调用标签匹配服务（Redis缓存优化）
+        List<GymCourseMatchDTO> matchedCourses = tagMatchService.getMatchedCourses(profileId, week);
+
+        // 3. 分页处理
+        List<GymCourseMatchDTO> pagedResults = matchedCourses.stream()
+                .limit(limit)
+                .collect(Collectors.toList());
+
+        // 4. RuoYi标准返回格式
+        return success(TableDataInfo.build(pagedResults, matchedCourses.size()));
+    }
+}
+```
 
 **方法**: GET
-**路径**: /api/v1/courses/match
-**描述**: 获取符合当前档案标签的课程列表（智能匹配）
+**路径**: /gym/tag/courses/match
+**描述**: 基于RuoYi架构的3维硬匹配+软标签排序智能推荐算法
 
 **Query Parameters**:
 - `profile_id` (required): 档案ID
@@ -430,82 +644,182 @@ CREATE TABLE `tag_match_log` (
 - `limit` (optional): 返回数量限制，默认20
 - `include_unmatched` (optional): 是否包含不匹配的课程，默认false
 
-**Response（4维验证版）**:
+**RuoYi标准响应格式**：
 ```json
 {
   "code": 200,
-  "message": "查询成功",
+  "msg": "查询成功",
   "data": {
-    "profile_tags": {
-      "age_tag": "4-5",
-      "level": "L2",
-      "gender": "male",
-      "development": "interest",
-      "privilege": "new_user"
-    },
-    "match_rule": "4d_whitelist_validation",
-    "matched_courses": [
+    "total": 15,
+    "rows": [
       {
-        "course_id": 1,
-        "name": "基础体操训练班",
-        "level_range": ["L1+", "L2"],
-        "age_range": "4-5",
+        "courseId": 1,
+        "courseName": "基础体操训练班",
+        "levelRange": ["L1+", "L2"],
+        "ageRange": "4-5",
         "gender": "both",
-        "course_type": "interest",
-        "waitlist_capacity": 8,
-        "match_score": 100.0,
-        "validation_result": "whitelist_passed",
-        "match_details": {
-          "validation_type": "4d_whitelist",
-          "overall_match": true,
-          "dimension_results": {
-            "level_match": { "score": 100, "result": "matched", "reason": "等级L2在范围内" },
-            "age_match": { "score": 100, "result": "matched", "reason": "年龄5.2岁符合4-5岁" },
-            "gender_match": { "score": 100, "result": "matched", "reason": "性别male符合both要求" },
-            "type_match": { "score": 100, "result": "matched", "reason": "类型interest匹配" }
-          },
-          "validation_summary": {
-            "total_dimensions": 4,
-            "passed_dimensions": 4,
-            "validation_result": "whitelist_passed"
-          }
+        "courseType": "interest",
+        "waitlistCapacity": 8,
+        "matchScore": 100.0,
+        "validationResult": "hard_match_passed",
+        "recommendationScore": 89.5,
+        "hardMatchResults": {
+          "levelMatch": { "score": 100, "result": "matched", "reason": "等级L2在范围内" },
+          "ageMatch": { "score": 100, "result": "matched", "reason": "年龄5.2岁符合4-5岁" },
+          "genderMatch": { "score": 100, "result": "matched", "reason": "性别male符合both要求" }
+        },
+        "softTagScores": {
+          "courseTypeMatch": { "score": 95, "weight": 0.4, "reason": "类型interest高度匹配" },
+          "developmentMatch": { "score": 90, "weight": 0.3, "reason": "发展标签匹配" },
+          "popularityScore": { "score": 80, "weight": 0.2, "reason": "热门程度normal" }
         }
       }
-    ],
-    "unmatched_courses": [
-      {
-        "course_id": 2,
-        "name": "女子竞技训练",
-        "level_range": ["L4", "L5"],
-        "age_range": "6+",
-        "gender": "female",
-        "course_type": "competition",
-        "match_score": 0,
-        "validation_result": "whitelist_failed",
-        "match_details": {
-          "validation_type": "4d_whitelist",
-          "overall_match": false,
-          "dimension_results": {
-            "level_match": { "score": 0, "result": "failed", "reason": "等级L2低于L4要求" },
-            "age_match": { "score": 0, "result": "failed", "reason": "年龄5.2岁不符合6+要求" },
-            "gender_match": { "score": 0, "result": "failed", "reason": "性别male不符合female要求" },
-            "type_match": { "score": 0, "result": "failed", "reason": "类型interest不符合competition要求" }
-          },
-          "validation_summary": {
-            "total_dimensions": 4,
-            "passed_dimensions": 0,
-            "validation_result": "whitelist_failed"
-          }
-        }
-      }
-    ],
-    "pagination": {
-      "total": 50,
-      "page": 1,
-      "limit": 20
-    }
+    ]
   }
 }
+```
+
+**Vue3前端组件设计**：
+```vue
+<template>
+  <div class="tag-match-container">
+    <!-- 学员标签信息展示 -->
+    <el-card class="profile-tags-card" v-if="profileTags">
+      <template #header>
+        <span>学员标签信息</span>
+        <el-button @click="refreshTags" size="small">刷新</el-button>
+      </template>
+      <el-descriptions :column="3" border>
+        <el-descriptions-item label="年龄标签">{{ profileTags.ageTag }}</el-descriptions-item>
+        <el-descriptions-item label="技能等级">{{ profileTags.level }}</el-descriptions-item>
+        <el-descriptions-item label="性别">{{ profileTags.gender }}</el-descriptions-item>
+        <el-descriptions-item label="发展方向">{{ profileTags.development }}</el-descriptions-item>
+        <el-descriptions-item label="权益类型">{{ profileTags.privilege }}</el-descriptions-item>
+      </el-descriptions>
+    </el-card>
+
+    <!-- 匹配课程列表 -->
+    <el-card class="matched-courses-card">
+      <template #header>
+        <span>智能推荐课程（3维硬匹配+软标签排序）</span>
+        <el-tag type="success">{{ matchedCourses.length }}个匹配课程</el-tag>
+      </template>
+
+      <el-table :data="matchedCourses" style="width: 100%">
+        <el-table-column prop="courseName" label="课程名称" min-width="150" />
+        <el-table-column prop="matchScore" label="匹配分数" width="100">
+          <template #default="scope">
+            <el-progress
+              :percentage="scope.row.matchScore"
+              :stroke-width="10"
+              :show-text="true"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column prop="recommendationScore" label="推荐指数" width="120">
+          <template #default="scope">
+            <el-rate
+              v-model="scope.row.recommendationScore / 20"
+              disabled
+              show-score
+            />
+          </template>
+        </el-table-column>
+        <el-table-column prop="validationResult" label="匹配结果" width="120">
+          <template #default="scope">
+            <el-tag
+              :type="scope.row.validationResult === 'hard_match_passed' ? 'success' : 'danger'"
+            >
+              {{ scope.row.validationResult === 'hard_match_passed' ? '通过' : '未通过' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120">
+          <template #default="scope">
+            <el-button @click="showMatchDetails(scope.row)" size="small" type="primary">
+              查看详情
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 匹配详情弹窗 -->
+    <el-dialog v-model="detailVisible" title="匹配详情分析" width="800px">
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="硬匹配结果" name="hard">
+          <el-descriptions :column="1" border>
+            <el-descriptions-item
+              v-for="(result, key) in selectedCourse.hardMatchResults"
+              :key="key"
+              :label="getMatchLabel(key)"
+            >
+              <el-tag :type="result.result === 'matched' ? 'success' : 'danger'">
+                {{ result.result === 'matched' ? '匹配' : '不匹配' }}
+              </el-tag>
+              <span class="ml-2">{{ result.reason }}</span>
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-tab-pane>
+
+        <el-tab-pane label="软标签评分" name="soft">
+          <el-table :data="formatSoftScores(selectedCourse.softTagScores)" style="width: 100%">
+            <el-table-column prop="name" label="评分项" />
+            <el-table-column prop="score" label="分数" width="100" />
+            <el-table-column prop="weight" label="权重" width="100" />
+            <el-table-column prop="reason" label="说明" />
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { getMatchedCourses } from '@/api/gym/tag'
+import { ElMessage } from 'element-plus'
+
+const profileTags = ref(null)
+const matchedCourses = ref([])
+const detailVisible = ref(false)
+const selectedCourse = ref({})
+const activeTab = ref('hard')
+
+const props = defineProps({
+  profileId: {
+    type: Number,
+    required: true
+  }
+})
+
+const loadMatchedCourses = async () => {
+  try {
+    const response = await getMatchedCourses({
+      profileId: props.profileId,
+      week: 1,
+      limit: 50
+    })
+
+    if (response.code === 200) {
+      matchedCourses.value = response.data.rows
+    } else {
+      ElMessage.error(response.msg)
+    }
+  } catch (error) {
+    ElMessage.error('获取匹配课程失败')
+  }
+}
+
+const showMatchDetails = (course) => {
+  selectedCourse.value = course
+  detailVisible.value = true
+}
+
+onMounted(() => {
+  loadMatchedCourses()
+})
+</script>
 ```
 
 #### POST /api/v1/courses/feedback
@@ -707,47 +1021,87 @@ match:{profile_id}:{week}     # 匹配结果缓存
 
 ---
 
-## 测试策略
+## RuoYi-Vue-Pro测试策略
 
-### 单元测试
+### RuoYi单元测试（JUnit 5 + Mockito）
 
-#### 标签匹配算法测试
-```python
-def test_level_matching():
-    # 测试等级匹配逻辑
-    assert match_level("L2", ["L1+", "L2"]) == True
-    assert match_level("L1", ["L1+", "L2"]) == False
-    assert match_level("L1+", ["L1+", "L2"]) == True
+#### RuoYi标签匹配Service测试
+```java
+@SpringBootTest
+@ActiveProfiles("test")
+class GymTagMatchServiceImplTest {
 
-def test_age_matching():
-    # 测试年龄匹配逻辑
-    assert match_age(5.2, "4-5") == True
-    assert match_age(6.1, "4-5") == False
-    assert match_age(7.0, "6+") == True
+    @Autowired
+    private IGymTagMatchService tagMatchService;
+
+    @MockBean
+    private IGymCourseTagsService courseTagsService;
+
+    @MockBean
+    private IGymStudentProfileService studentProfileService;
+
+    @Test
+    @DisplayName("3维硬匹配 - 等级匹配测试")
+    void testLevelMatching() {
+        // given
+        GymStudentProfile profile = new GymStudentProfile();
+        profile.setLevel("L2");
+        profile.setAgeRange("4-5");
+        profile.setGender("male");
+
+        GymCourseTags courseTag = new GymCourseTags();
+        courseTag.setLevelRange("[\"L1+\", \"L2\"]");
+        courseTag.setAgeRange("4-5");
+        courseTag.setGender("both");
+
+        when(studentProfileService.getById(1L)).thenReturn(profile);
+        when(courseTagsService.list(any())).thenReturn(List.of(courseTag));
+
+        // when
+        List<GymCourseMatchDTO> result = tagMatchService.getMatchedCourses(1L, 1);
+
+        // then
+        assertThat(result).isNotEmpty();
+        assertThat(result.get(0).getMatchScore()).isEqualTo(100.0);
+    }
+
+    @Test
+    @DisplayName("3维硬匹配 - 年龄匹配测试")
+    void testAgeMatching() {
+        // given
+        GymStudentProfile profile = new GymStudentProfile();
+        profile.setBirthday(LocalDate.of(2019, 6, 15)); // 5.2岁
+        profile.setLevel("L2");
+        profile.setGender("male");
+
+        // when & then
+        assertThat(calculateAgeRange(5.2)).isEqualTo("4-5");
+        assertThat(calculateAgeRange(6.1)).isEqualTo("6+");
+        assertThat(calculateAgeRange(3.8)).isEqualTo("3-4");
+    }
+}
 ```
 
-#### 数据模型测试
-```python
-def test_course_tags_creation():
-    # 测试课程标签创建
-    course_tag = create_course_tag(
-        course_id=1,
-        level_range=["L1+", "L2"],
-        course_type="interest"
-    )
-    assert course_tag.level_range == ["L1+", "L2"]
-    assert course_tag.course_type == "interest"
+#### RuoYi数据模型测试
+```java
+@SpringBootTest
+class GymCourseTagsTest {
 
-def test_tag_match_log_creation():
-    # 测试匹配日志创建
-    log = create_tag_match_log(
-        profile_id=1,
-        course_id=1,
-        is_matched=True,
-        match_score=95.5
-    )
-    assert log.is_matched == True
-    assert log.match_score == 95.5
+    @Test
+    @DisplayName("课程标签实体创建测试")
+    void testCourseTagsCreation() {
+        // given
+        GymCourseTags courseTag = new GymCourseTags();
+        courseTag.setCourseId(1L);
+        courseTag.setLevelRange("[\"L1+\", \"L2\"]");
+        courseTag.setCourseType("interest");
+
+        // when & then
+        assertThat(courseTag.getLevelRange()).isEqualTo("[\"L1+\", \"L2\"]");
+        assertThat(courseTag.getCourseType()).isEqualTo("interest");
+        assertThat(courseTag.getVersion()).isEqualTo(0); // @Version默认值
+    }
+}
 ```
 
 ### 集成测试
@@ -991,13 +1345,62 @@ TAG_ERROR_CODES = {
 }
 ```
 
+### RuoYi错误代码定义
+
+#### RuoYi标签系统错误代码
+- **TAG_001**: 标签格式错误
+- **TAG_002**: 3维硬匹配失败
+- **TAG_003**: MyBatis-Plus数据不一致
+- **TAG_004**: 标签算法异常
+- **TAG_005**: Redis缓存异常
+
+#### RuoYi HTTP状态码映射
+```java
+public enum TagErrorCode {
+    TAG_001(400, "标签格式错误"),
+    TAG_002(404, "3维硬匹配失败"),
+    TAG_003(422, "数据验证失败"),
+    TAG_004(500, "服务器内部错误"),
+    TAG_005(503, "服务不可用");
+}
+```
+
 ---
 
-**文档版本**: 1.0.0
+## RuoYi架构成功指标
+
+### 技术性能指标（基于RuoYi架构优化）
+- [ ] SC-001: 3维硬匹配准确率100%（MyBatis- + Redis）
+- [ ] SC-002: 标签匹配API响应时间<100ms（@Cacheable优化）
+- [ ] SC-003: 软标签排序算法准确性>95%（推荐引擎优化）
+- [ ] SC-004: Redis缓存命中率>90%（Spring Cache配置）
+- [ ] SC-005: RuoYi审计日志完整性100%（@Log注解覆盖）
+
+### RuoYi架构质量指标
+- [ ] SC-006: MyBatis-Plus LambdaQueryWrapper使用率100%
+- [ ] SC-007: Spring @Cacheable缓存策略正确率100%
+- [ ] SC-008: RuoYi统一响应格式AjaxResult使用率100%
+- [ ] SC-009: Vue3 Composition API组件覆盖率100%
+- [ ] SC-010: Spring Security权限控制准确率100%
+- [ ] SC-011: JUnit 5 + Mockito测试覆盖率>90%
+
+### 企业级特性指标
+- [ ] SC-012: RuoYi数据权限控制准确性100%（@DataScope）
+- [ ] SC-013: MyBatis-Plus乐观锁并发控制100%有效
+- [ ] SC-014: Spring @Scheduled定时任务可靠性100%
+- [ ] SC-015: RuoYi代码生成器标准覆盖率100%
+- [ ] SC-016: Spring Boot Actuator健康检查100%通过
+- [ ] SC-017: RuoYi多数据源配置正确性100%
+
+---
+
+**文档版本**: v2.0.0 RuoYi架构重构
 **创建日期**: 2025-10-31
-**最后更新**: 2025-10-31
-**负责人**: 产品团队
+**重构日期**: 2025-11-17
+**技术栈**: RuoYi-Vue-Pro + MyBatis-Plus + Redis + Vue3
+**最后更新**: 2025-11-17
+**架构师**: AI Claude - RuoYi企业级架构重构
 
 ---
 
-*本文档为标签系统的设计参考，具体实现请参照MVP-2A规格文档和MVP-5运营后台规格文档。*
+*本文档基于RuoYi-Vue-Pro企业级架构重构的标签系统设计参考，具体实现请参照MVP-2A规格文档和MVP-5运营后台规格文档。所有代码示例均遵循RuoYi开发规范和企业级最佳实践。*

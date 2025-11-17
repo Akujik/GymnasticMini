@@ -1,29 +1,31 @@
-# Feature Specification: Private Lesson System
+# 功能规格说明：私教课程系统
 
-**Feature Branch**: `004-private-lesson`
-**Created**: 2025-11-05
-**Status**: Draft
+**功能分支**: `004-private-lesson`
+**创建时间**: 2025-11-05
+**状态**: Draft
 **MVP**: MVP-2C
-**Dependencies**: MVP-2A (002-course-display-and-booking)
-**Input**: "Build a private lesson system where parents can browse private coaching options, submit consultation requests, and manage private lesson bookings through admin coordination."
+**依赖关系**: MVP-2A (002-course-display-and-booking)
+**输入需求**: "构建私教课程系统，家长可以浏览私教课程选项，提交咨询申请，通过运营协调管理私教课程预约"
+**版本**: v2.0.0 RuoYi架构重构
+**重构日期**: 2025-11-17
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - 私教课程浏览与咨询 (Priority: P1)
+### User Story 1 - 私教课程浏览与客服咨询 (Priority: P1) (根据Q9更新)
 
-家长在小程序中浏览私教课程信息，查看教练介绍、课程类型、价格等，并可以提交咨询申请。系统显示"预约咨询"按钮而非直接预约。
+家长在小程序中浏览私教课程信息，查看教练介绍、课程类型、价格等，点击"咨询预约"后直接显示客服二维码，通过微信客服联系预约。
 
-**Why this priority**: 私教课程是高价值服务，需要专业咨询确保匹配正确性，咨询流程是转化的关键环节。
+**Why this priority**: 私教课程是高价值服务，简化咨询流程提升用户体验，通过客服直接沟通确保服务质量。
 
-**Independent Test**: 浏览私教课程列表，验证"预约咨询"按钮显示正确，点击后能正常提交咨询申请。
+**Independent Test**: 浏览私教课程列表，验证"咨询预约"按钮显示正确，点击后能正常显示客服二维码。
 
 **Acceptance Scenarios**:
 
-1. **Given** 用户进入私教课程页面，**When** 查看课程列表，**Then** 显示教练信息、课程类型、价格等，按钮文案为"预约咨询"
-2. **Given** 用户点击某私教课程的"预约咨询"按钮，**When** 进入咨询页面，**Then** 显示教练详细介绍、咨询表单、联系方式
-3. **Given** 用户填写咨询表单并提交，**When** 系统处理，**Then** 显示"咨询已提交，运营人员将尽快联系您"，并生成咨询记录
-4. **Given** 用户在"我的咨询"页面，**When** 查看咨询记录，**Then** 显示咨询状态（待联系/已联系/已预约/不感兴趣）
-5. **Given** 运营人员联系用户确认私教安排，**When** 运营后台录入，**Then** 系统生成私教预约记录，用户可查看预约详情
+1. **Given** 用户进入私教课程页面，**When** 查看课程列表，**Then** 显示教练信息、课程类型、价格等，按钮文案为"咨询预约"
+2. **Given** 用户点击某私教课程的"咨询预约"按钮，**When** 弹窗显示，**Then** 显示教练详细介绍和"联系客服"二维码
+3. **Given** 用户扫描二维码或点击"联系客服"，**When** 跳转，**Then** 直接打开微信客服对话，咨询私教课程详情
+4. **Given** 客服确认用户预约意向，**When** 运营后台录入，**Then** 系统生成私教预约记录，用户可查看预约详情
+5. **Given** 微信客服API不可用，**When** 降级处理，**Then** 显示静态客服二维码图片，提示用户扫码添加客服
 
 ---
 
@@ -36,81 +38,301 @@
 
 ---
 
-## Functional Requirements *(mandatory)*
+## 技术架构设计
 
-### Core Requirements
+### RuoYi-Vue-Pro 技术栈
 
-- **FR-001**: 系统必须显示私教课程列表，包含教练信息、课程类型、价格等
-- **FR-002**: 系统必须显示"预约咨询"按钮，而非直接预约按钮
-- **FR-003**: 系统必须支持用户提交咨询申请，记录咨询内容和联系方式
-- **FR-004**: 系统必须支持咨询状态跟踪（待联系/已联系/已预约/不感兴趣）
-- **FR-005**: 系统必须支持运营人员录入私教预约安排
-- **FR-006**: 系统必须显示用户的咨询记录和预约状态
+**后端架构**：
+- **框架**: Spring Boot 2.7.x + RuoYi-Vue-Pro
+- **ORM**: MyBatis-Plus 3.5.x (LambdaQueryWrapper查询优化)
+- **缓存**: Redis 6.x (Spring Cache + @Cacheable注解)
+- **数据库**: MySQL 8.0 (主从复制)
+- **认证**: Spring Security + JWT Token
+- **事务**: @Transactional注解管理
+- **日志**: Spring Boot Actuator + Logback
+- **API文档**: Swagger 3.0 (OpenAPI)
+- **定时任务**: Spring @Scheduled
 
-#### FR-040: 4维标签白名单匹配相关（私教课扩展）
+**前端架构**：
+- **小程序**: 原生微信小程序框架
+- **管理后台**: Vue 3 + TypeScript + Element Plus
+- **状态管理**: Pinia (Vue 3推荐)
+- **HTTP客户端**: Axios
+- **组件库**: 自定义组件库 + RuoYi-Vue-Pro组件
 
-- **FR-040-PL**: 系统必须对私教课程实施4维标签白名单匹配验证：等级维度 + 年龄维度 + 性别维度 + 类型维度，任一维度不匹配则私教课程不显示
+### 核心业务要求 (基于RuoYi架构重构)
+
+- **FR-001**: 系统必须基于RuoYi权限管理显示私教课程列表，包含教练信息、课程类型、价格等
+- **FR-002**: 系统必须显示"咨询预约"按钮，集成RuoYi工作流引擎
+- **FR-003**: 系统必须显示微信客服二维码，支持RuoYi通知服务
+- **FR-004**: 系统必须支持微信客服API跳转功能，使用RuoYi远程调用服务
+- **FR-005**: 系统必须支持客服二维码降级显示（静态图片），集成RuoYi文件存储服务
+- **FR-006**: 系统必须支持运营人员录入私教预约安排，使用RuoYi数据权限控制
+- **FR-007**: 系统必须显示用户的私教预约记录和状态，基于RuoYi审计日志系统
+
+#### FR-040: 3维硬匹配白名单匹配相关（私教课扩展，根据Q4,Q11,Q16,Q19更新）
+
+- **FR-040-PL**: 系统必须对私教课程实施3维硬匹配白名单验证：等级维度 + 年龄维度 + 性别维度，任一维度不匹配则私教课程不显示
 - **FR-040-PL**: 系统必须在私教课程详情页显示匹配度信息，说明为什么该私教课程适合当前学员档案
-- **FR-040-PL**: 系统必须支持私教课程的个性化价格显示，基于4维匹配结果和用户权益动态计算
+- **FR-040-PL**: 系统必须支持私教课程的个性化价格显示，基于3维硬匹配结果和软标签排序
 
-#### FR-042: 私教课仅浏览模式相关
+#### FR-042: 私教课仅浏览模式相关（根据Q9更新）
 
 - **FR-042-01**: 系统必须将私教课程设置为仅浏览模式，用户只能查看私教信息，不能直接在线预约
-- **FR-042-02**: 系统必须显示"预约咨询"按钮替代"立即预约"按钮，引导用户通过咨询流程了解私教服务
-- **FR-042-03**: 系统必须支持咨询表单提交，包含学员信息、咨询内容、期望时间、联系方式等字段
-- **FR-042-04**: 系统必须为运营人员提供后台管理界面，处理咨询请求并手动安排私教预约
-- **FR-042-05**: 系统必须支持线下支付流程，运营人员在后台录入私教预约后联系用户确认付款方式
+- **FR-042-02**: 系统必须显示"咨询预约"按钮替代"立即预约"按钮，引导用户通过客服咨询了解私教服务
+- **FR-042-03**: 系统必须点击"咨询预约"后显示微信客服二维码，支持直接联系客服
+- **FR-042-04**: 系统必须支持微信客服API跳转，提供无缝的客服体验
+- **FR-042-05**: 系统必须为运营人员提供后台管理界面，录入客服确认的私教预约
+- **FR-042-06**: 系统必须支持线下支付流程，运营人员在后台录入私教预约后联系用户确认付款方式
 
-### Data Requirements
+### Data Requirements (根据Q9更新)
 
-- **FR-007**: 系统必须存储私教课程信息：教练ID、课程类型、价格、课程介绍
-- **FR-008**: 系统必须存储咨询记录：用户ID、教练ID、咨询内容、状态、创建时间
+- **FR-008**: 系统必须存储私教课程信息：教练ID、课程类型、价格、课程介绍
 - **FR-009**: 系统必须存储私教预约记录：用户ID、教练ID、预约时间、状态、价格
+- **FR-010**: 系统必须存储客服二维码信息：客服微信号、二维码图片地址、更新时间
+- **FR-011**: 系统必须记录客服点击事件追踪：用户ID、教练ID、点击时间、点击方式
 
-### Key Entities
+### RuoYi架构核心实体设计
 
-- **private_instructor**: 私教教练实体
-  - 核心属性: id, name, avatar_url, bio, specialties, price_per_hour, status, tags (4维标签)
-  - 业务规则: 教练信息由运营维护，价格按小时计算，支持FR-040的4维标签匹配
+#### GymPrivateInstructor（私教教练实体）
+```java
+@Data
+@TableName("gym_private_instructor")
+@Accessors(chain = true)
+public class GymPrivateInstructor extends BaseEntity implements Serializable {
+    @TableId(value = "instructor_id", type = IdType.AUTO)
+    private Long instructorId;
 
-- **private_course_tags**: 私教课程标签实体（扩展course_tags表）
-  - 核心属性: id, course_id, level_range, age_range, gender, course_type="private", skill_types
-  - 业务规则: 支持FR-040的4维标签白名单匹配，确保私教课程仅对匹配用户显示
+    @TableField("name")
+    private String name;
 
-- **private_inquiry**: 私教咨询实体（FR-042核心）
-  - 核心属性: id, user_id, instructor_id, profile_id, inquiry_content, contact_info, preferred_time, status, created_at, admin_notes
-  - 业务规则: 记录用户咨询，支持运营跟进，FR-042仅浏览模式的核心流程
+    @TableField("avatar_url")
+    private String avatarUrl;
 
-- **private_consultation**: 私教咨询流程实体（FR-042扩展）
-  - 核心属性: id, inquiry_id, consultation_method, consultation_time, admin_operator_id, consultation_result, follow_up_actions
-  - 业务规则: 记录完整的咨询流程，支持多种联系方式和结果跟踪
+    @TableField("bio")
+    private String bio;
 
-- **private_booking**: 私教预约实体（FR-042线下录入）
-  - 核心属性: id, user_id, profile_id, instructor_id, booking_time, duration, price, status, payment_method, admin_id, confirmation_notes
-  - 业务规则: 由运营人员录入，用户不可直接预约，FR-042仅浏览模式的最终环节
+    @TableField("specialties")
+    private String specialties; // JSON格式存储
+
+    @TableField("price_per_hour")
+    private BigDecimal pricePerHour;
+
+    @TableField("status")
+    private String status; // active/inactive
+
+    @TableField("level_range")
+    private String levelRange; // JSON格式，支持FR-040匹配
+
+    @TableField("age_range")
+    private String ageRange;
+
+    @TableField("gender")
+    private String gender;
+
+    @TableField("course_type")
+    private String courseType;
+
+    @Version
+    @TableField("version")
+    private Integer version;
+}
+```
+
+#### GymPrivateInquiry（私教咨询实体）
+```java
+@Data
+@TableName("gym_private_inquiry")
+@Accessors(chain = true)
+public class GymPrivateInquiry extends BaseEntity implements Serializable {
+    @TableId(value = "inquiry_id", type = IdType.AUTO)
+    private Long inquiryId;
+
+    @TableField("user_id")
+    private Long userId;
+
+    @TableField("profile_id")
+    private Long profileId;
+
+    @TableField("instructor_id")
+    private Long instructorId;
+
+    @TableField("inquiry_content")
+    private String inquiryContent;
+
+    @TableField("contact_info")
+    private String contactInfo;
+
+    @TableField("preferred_time")
+    private String preferredTime;
+
+    @TableField("status")
+    private String status; // pending/contacted/booked/not_interested/expired
+
+    @TableField("admin_notes")
+    private String adminNotes;
+
+    @Version
+    @TableField("version")
+    private Integer version;
+}
+```
+
+#### GymPrivateBooking（私教预约实体）
+```java
+@Data
+@TableName("gym_private_booking")
+@Accessors(chain = true)
+public class GymPrivateBooking extends BaseEntity implements Serializable {
+    @TableId(value = "booking_id", type = IdType.AUTO)
+    private Long bookingId;
+
+    @TableField("user_id")
+    private Long userId;
+
+    @TableField("profile_id")
+    private Long profileId;
+
+    @TableField("instructor_id")
+    private Long instructorId;
+
+    @TableField("booking_time")
+    private LocalDateTime bookingTime;
+
+    @TableField("duration")
+    private Integer duration;
+
+    @TableField("actual_price")
+    private BigDecimal actualPrice;
+
+    @TableField("status")
+    private String status; // pending/confirmed/completed/cancelled/no_show
+
+    @TableField("payment_method")
+    private String paymentMethod;
+
+    @TableField("admin_id")
+    private Long adminId;
+
+    @TableField("confirmation_notes")
+    private String confirmationNotes;
+
+    @Version
+    @TableField("version")
+    private Integer version;
+}
+```
+
+#### RuoYi业务服务层设计
+```java
+@Service
+@Slf4j
+public class GymPrivateInstructorServiceImpl extends ServiceImpl<GymPrivateInstructorMapper, GymPrivateInstructor> implements IGymPrivateInstructorService {
+
+    @Override
+    @Cacheable(value = "privateInstructors", key = "#profileId + ':' + #level + ':' + #ageRange + ':' + #gender")
+    public List<GymPrivateInstructorVO> getMatchedInstructors(Long profileId, String level, String ageRange, String gender) {
+        // 1. 获取学员档案信息
+        GymProfile profile = profileMapper.selectById(profileId);
+
+        // 2. 执行4维匹配 (FR-040)
+        LambdaQueryWrapper<GymPrivateInstructor> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(GymPrivateInstructor::getStatus, "active")
+                   .like(GymPrivateInstructor::getLevelRange, level)
+                   .eq(GymPrivateInstructor::getAgeRange, ageRange)
+                   .and(wrapper -> wrapper.eq(GymPrivateInstructor::getGender, "both")
+                                        .or()
+                                        .eq(GymPrivateInstructor::getGender, gender));
+
+        return this.list(queryWrapper).stream()
+                .map(this::convertToVO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @Log(title = "私教咨询", businessType = BusinessType.INSERT)
+    public boolean submitInquiry(GymPrivateInquiryDTO inquiryDTO) {
+        GymPrivateInquiry inquiry = BeanUtil.toBean(inquiryDTO, GymPrivateInquiry.class);
+        boolean result = this.save(inquiry);
+
+        // 发送通知给运营人员
+        if (result) {
+            notificationService.notifyAdminForInquiry(inquiry.getInquiryId());
+        }
+
+        return result;
+    }
+}
+```
+
+### RuoYi控制器层设计
+```java
+@RestController
+@RequestMapping("/gym/private/instructors")
+@Api(tags = "私教教练管理")
+@RequiredArgsConstructor
+public class GymPrivateInstructorController extends BaseController {
+
+    private final IGymPrivateInstructorService instructorService;
+
+    @GetMapping("/matched")
+    @ApiOperation("获取匹配的私教教练列表")
+    @PreAuthorize("@ss.hasPermi('gym:private:instructor:list')")
+    public TableDataInfo<GymPrivateInstructorVO> getMatchedInstructors(
+            @RequestParam Long profileId,
+            @RequestParam(required = false) String level,
+            @RequestParam(required = false) String ageRange,
+            @RequestParam(required = false) String gender) {
+
+        List<GymPrivateInstructorVO> instructors = instructorService.getMatchedInstructors(profileId, level, ageRange, gender);
+        return getDataTable(instructors);
+    }
+
+    @PostMapping("/inquiry")
+    @ApiOperation("提交私教咨询申请")
+    @PreAuthorize("@ss.hasPermi('gym:private:inquiry:add')")
+    public AjaxResult submitInquiry(@Valid @RequestBody GymPrivateInquiryDTO inquiryDTO) {
+        return toAjax(instructorService.submitInquiry(inquiryDTO));
+    }
+}
+```
 
 ---
 
-## Success Criteria *(mandatory)*
+## RuoYi架构成功指标
 
-- **SC-001**: 私教课程列表加载成功率>99%，信息显示准确率100%
-- **SC-002**: "预约咨询"按钮显示准确率100%，无直接预约按钮
-- **SC-003**: 咨询申请提交成功率>99%，状态跟踪准确率100%
-- **SC-004**: 运营人员录入预约成功率>98%，用户查看准确率100%
+### 技术性能指标
+- **SC-001**: 私教课程列表加载成功率>99%，信息显示准确率100%，响应时间<500ms
+- **SC-002**: "咨询预约"按钮显示准确率100%，无直接预约按钮，集成RuoYi权限验证
+- **SC-003**: 客服二维码显示成功率>99%，微信客服跳转成功率>95%，使用RuoYi文件服务
+- **SC-004**: 客服二维码降级显示成功率100%，静态图片正常加载，RuoYi缓存命中率>90%
+- **SC-005**: 运营人员录入预约成功率>98%，用户查看准确率100%，事务一致性保证
+- **SC-006**: 客服点击事件追踪记录完整率100%，RuoYi审计日志完整性
 
-#### FR-040: 4维标签白名单匹配成功标准
+### RuoYi架构质量指标
+- **SC-007**: MyBatis-Plus查询优化率>95%，LambdaQueryWrapper使用率100%
+- **SC-008**: Spring事务管理正确率100%，@Transactional注解覆盖所有关键业务
+- **SC-009**: Redis缓存命中率>90%，@Cacheable注解优化所有查询接口
+- **SC-010**: RuoYi数据权限控制正确率100%，@PreAuthorize注解完整覆盖
+- **SC-011**: 乐观锁并发控制成功率>99%，@Version字段防止并发冲突
+- **SC-012**: RuoYi统一响应格式使用率100%，AjaxResult/AjaxPageResult规范输出
 
-- **SC-005**: 私教课程4维标签匹配准确率100%（等级+年龄+性别+类型任一维度不匹配则不显示）
-- **SC-006**: 私教课程匹配度计算准确率>95%，匹配详情说明清晰易懂
-- **SC-007**: 私教课程个性化价格显示准确率100%，基于4维匹配和用户权益动态计算
+#### FR-040: 3维硬匹配白名单匹配成功标准（根据Q4,Q11,Q16,Q19更新）
 
-#### FR-042: 私教课仅浏览模式成功标准
+- **SC-007**: 私教课程3维硬匹配准确率100%（等级+年龄+性别任一维度不匹配则不显示）
+- **SC-008**: 私教课程匹配度计算准确率>95%，匹配详情说明清晰易懂
+- **SC-009**: 私教课程个性化价格显示准确率100%，基于3维硬匹配和软标签排序
 
-- **SC-008**: 私教课程仅浏览模式执行准确率100%（无直接在线预约功能）
-- **SC-009**: "预约咨询"按钮转化率>30%，咨询表单提交成功率>98%
-- **SC-010**: 咨询响应及时率>95%（运营人员24小时内响应）
-- **SC-011**: 线下私教预约录入成功率>98%，预约信息准确率100%
-- **SC-012**: 私教咨询到预约转化率>20%，用户满意度>90%
+#### FR-042: 私教课仅浏览模式成功标准（根据Q9更新）
+
+- **SC-010**: 私教课程仅浏览模式执行准确率100%（无直接在线预约功能）
+- **SC-011**: "咨询预约"按钮执行准确率100%，点击后正确显示客服二维码
+- **SC-012**: 客服二维码展示准确率100%，包含客服微信号和扫描提示
+- **SC-013**: 微信客服API跳转成功率>95%，提供无缝客服体验
+- **SC-014**: 客服二维码降级机制执行准确率100%（API不可用时显示静态图片）
+- **SC-015**: 线下私教预约录入成功率>98%，预约信息准确率100%
+- **SC-016**: 客服咨询到预约转化率>20%，用户满意度>90%
 
 ---
 
@@ -131,19 +353,71 @@
 
 ---
 
-## Integration Points
+## RuoYi架构集成点
 
-### Dependencies on MVP-2A
-- **用户身份系统**: 需要用户登录和身份验证
-- **课程展示系统**: 复用课程展示逻辑和UI组件
+### RuoYi-Vue-Pro 系统集成
 
-### Dependencies on Future MVPs
-- **支付系统**: MVP-3可能支持私教课程在线支付
-- **运营后台**: MVP-5提供私教管理和咨询处理功能
+#### 与RuoYi核心模块的依赖关系
+- **RuoYi用户认证**: 集成Spring Security + JWT，使用@PreAuthorize权限控制
+- **RuoYi系统监控**: 集成Spring Boot Actuator，支持健康检查和性能监控
+- **RuoYi代码生成**: 使用RuoYi代码生成器快速生成CRUD代码
+- **RuoYi文件管理**: 集成RuoYi文件存储服务，支持客服二维码上传和管理
+- **RuoYi通知服务**: 集成RuoYi消息通知，支持微信客服通知和系统提醒
+
+#### 与MVP-2A的RuoYi架构集成
+- **用户身份系统**: 基于RuoYi权限管理的用户登录和身份验证
+- **课程展示系统**: 复用RuoYi架构的课程展示逻辑和Vue3组件
+
+#### 与未来MVP的RuoYi架构集成
+- **支付系统**: 基于RuoYi架构的在线支付集成（MVP-5）
+- **运营后台**: 基于RuoYi-Vue-Pro的私教管理和咨询处理功能
+
+### RuoYi部署架构
+```yaml
+# Docker Compose - RuoYi-Vue-Pro部署
+version: '3.8'
+services:
+  ruoyi-gym-backend:
+    image: ruoyi/gymsystem:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - REDIS_HOST=redis
+      - MYSQL_HOST=mysql
+    depends_on:
+      - redis
+      - mysql
+
+  ruoyi-gym-admin:
+    image: ruoyi/gymsystem-admin:latest
+    ports:
+      - "8081:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=gym_management
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:6.2-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+  redis_data:
+```
 
 ---
 
-**创建人**: [产品经理]
-**最后更新**: 2025-11-05
-**版本**: v1.0.0
-**状态**: Draft
+**创建人**: [AI Claude - RuoYi架构重构]
+**最后更新**: 2025-11-17
+**版本**: v2.0.0 RuoYi架构重构
+**状态**: 已完成架构迁移

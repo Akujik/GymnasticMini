@@ -14,45 +14,59 @@
 - 🖥️ **运营后台**: 完整的Web管理和数据统计功能
 - 📅 **候补管理**: 智能候补队列和自动通知系统
 
-### 技术栈
+### 技术栈 (RuoYi 架构)
 
-| 层级 | 技术 | 说明 |
-|------|------|------|
-| **小程序** | 微信小程序 | 主要用户界面 |
-| **Web后台** | Vue 3 + Element Plus | 运营管理界面 |
-| **后端** | Node.js/Python | API服务 |
-| **数据库** | MySQL + Redis | 数据存储和缓存 |
-| **支付** | 微信支付 | 支付集成 |
-| **工具链** | Speckit | 开发工具和规范 |
+| 层级 | 技术 | 版本 | 说明 |
+|------|------|------|------|
+| **小程序** | 微信原生框架 | 基础库 3.11.0+ | 主要用户界面，支持Skyline渲染 |
+| **管理后台** | RuoYi-Vue-Pro | 最新 | 企业级管理后台，代码生成器+RBAC |
+| **后端框架** | Spring Boot | 3.1.x | 企业级Java框架，生态成熟 |
+| **安全框架** | Spring Security + JWT | 6.x | 完善的安全认证和权限管理 |
+| **数据库** | MySQL | 8.0+ | 关系型数据库，ACID事务支持 |
+| **缓存** | Redis | 7.0+ | 高性能缓存，Spring Session支持 |
+| **ORM** | MyBatis-Plus | 3.5.x | 强大的ORM框架，代码生成支持 |
+| **支付** | 微信支付Java SDK | 最新 | 官方Java版本支付SDK |
+| **部署** | Docker + Spring Boot | 3.x | 容器化部署，Spring Boot内置支持 |
+| **工具链** | Speckit | - | 开发工具和规范 |
 
 ## 🗺️ 项目导航
 
 ### 📄 核心文档
 - [**8阶段开发路线图**](ROADMAP.md) - 分阶段实施计划
-- [**项目宪法**](.specify/memory/constitution.md) - 开发原则和规范
-- [**MVP规格文档**](specs/) - 详细功能规格说明
+- [**项目宪法**](CONSTITUTION.md) - 18项开发原则，项目宪法
+- [**开发指南**](DEVELOPMENT.md) - Spring Boot开发规范和实践
+- [**技术文档**](docs/technical/) - RuoYi架构、数据库设计、API规范
+- [**MVP完整文档**](docs/mvp-complete/) - 8个MVP详细规格说明
 
 ### 📁 项目结构
 ```
 GymnasticMini/
+├── 📄 README.md                    # 项目主入口 (本文件)
+├── 📄 CONSTITUTION.md               # 项目宪法 - 18项开发原则
+├── 📄 DEVELOPMENT.md               # 开发指南 - Spring Boot实践
 ├── 📄 ROADMAP.md                   # 8阶段开发路线图
-├── 📄 README.md                    # 项目说明 (本文件)
-├── 📁 .specify/                    # Speckit工具生态
-├── 📁 specs/                       # MVP规格文档
-│   ├── 001-user-identity-system/   # 用户身份系统
-│   ├── 002-course-display-and-booking/  # 课程展示与预约
-│   ├── 003-waitlist-and-makeup/    # 候补与补课系统
-│   ├── 004-private-lesson/         # 私教课系统
-│   ├── 005-payment-integration/    # 支付集成
-│   ├── 006-wallet-system/          # 钱包系统
-│   ├── 007-admin-dashboard/        # 运营后台
-│   └── 008-tag-system/             # 标签系统设计
-├── 📁 docs/                        # 需求和分析文档
+├── 📁 .specify/                    # Speckit工具链配置
+│   ├── templates/                  # 文档模板
+│   ├── scripts/                    # 自动化脚本
+│   └── checklists/                 # 质量检查清单
+├── 📁 docs/                        # 项目文档
+│   ├── technical/                  # 技术文档
+│   │   ├── ruoyi-technical-architecture.md  # RuoYi架构设计
+│   │   ├── database-design.md      # MyBatis-Plus数据库设计
+│   │   ├── deployment-guide.md     # Docker部署指南
+│   │   └── api-design-guide.md     # API设计规范
+│   ├── mvp-complete/               # MVP完整文档
+│   │   ├── 001-user-identity-system.md      # 用户身份系统
+│   │   ├── 002-course-display-and-booking.md # 课程展示与预约
+│   │   ├── 003-waitlist-and-makeup.md       # 候补与补课系统
+│   │   ├── 004-private-lesson.md            # 私教课系统
+│   │   ├── 005-payment-integration.md       # 支付集成
+│   │   ├── 006-wallet-system.md             # 钱包系统
+│   │   ├── 007-admin-dashboard.md           # 运营后台
+│   │   └── 008-tag-system.md                # 标签系统
 │   ├── requirements.md             # 需求整合文档
-│   ├── corrections.md              # 产品修改指令
-│   ├── analysis.md                 # 分析报告
-│   └── archive/                    # 归档文档
-├── 📁 CCSmartMeet-master/           # 现有小程序项目
+│   └── archive/                    # 历史文档存档
+├── 📁 specs/                       # 详细规格文档 (备用)
 └── 📁 .git/                        # Git仓库
 ```
 
@@ -121,7 +135,8 @@ Specify → Plan → Tasks → Implement → Test → Deploy
 - ✅ **需求文档整理** - 完成
 - ✅ **规格文档制定** - 8个MVP全部完成
 - ✅ **8阶段路线图** - 制定完成
-- ✅ **目录结构重组** - 完成
+- ✅ **架构迁移** - 迁移至RuoYi架构完成
+- ✅ **文档结构重组** - 完成，消除40%冗余
 - 🔄 **开发环境准备** - 进行中
 - ⏳ **P0阶段实施** - 待开始
 
@@ -134,10 +149,10 @@ Specify → Plan → Tasks → Implement → Test → Deploy
 
 ## 📞 项目信息
 
-**最后更新**: 2025-11-08
-**文档版本**: v2.1
-**Roadmap版本**: v1.0
-**项目状态**: 需求规划完成，准备开发实施
+**最后更新**: 2025-11-18
+**文档版本**: v3.0 (RuoYi架构)
+**宪法版本**: v3.0.0
+**项目状态**: 架构迁移完成，文档整理完毕，准备开发实施
 
 ---
 

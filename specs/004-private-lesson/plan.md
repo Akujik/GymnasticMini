@@ -5,23 +5,35 @@
 **状态**: Draft
 **MVP**: 4
 **依赖关系**: MVP-1 (001-user-identity-system), MVP-2A (002-course-display-and-booking)
-**技术栈**: FastAPI + Vue3 + MySQL + Redis
+**版本**: v2.0.0 RuoYi架构重构
+**重构日期**: 2025-11-17
+**技术栈**: RuoYi-Vue-Pro + MyBatis-Plus + Redis + Vue3 + MySQL
 
 ---
 
 ## 概述
 
-本计划概述了为百适体操馆小程序实施私教课系统的完整方案。私教课系统采用"仅浏览模式"，用户只能浏览私教课信息并通过咨询流程进行预约，运营人员在后台手动录入线下确认的预约记录。系统严格遵循FR-042仅浏览模式和FR-040 4维标签白名单匹配要求。
+本计划概述了为百适体操馆小程序实施私教课系统的完整方案，基于RuoYi-Vue-Pro架构设计。私教课系统采用"仅浏览模式"，用户只能浏览私教课信息并通过咨询流程进行预约，运营人员在后台手动录入线下确认的预约记录。系统严格遵循FR-042仅浏览模式和FR-040 4维标签白名单匹配要求。
 
-### 核心业务特征
-1. **仅浏览模式**：用户不能直接在线预约私教课程，只能浏览信息
-2. **咨询驱动预约**：用户提交咨询申请 → 运营联系确认 → 后台手动录入
-3. **线下支付处理**：私教课程费用通过线下方式处理，暂不支持在线支付
+### RuoYi架构核心特征
+1. **企业级架构**：基于RuoYi-Vue-Pro框架，集成Spring Boot + MyBatis-Plus + Vue3
+2. **仅浏览模式**：用户不能直接在线预约私教课程，只能浏览信息
+3. **咨询驱动预约**：用户提交咨询申请 → 运营联系确认 → 后台手动录入
 4. **4维智能匹配**：等级+年龄+性别+类型的严格白名单匹配算法
+5. **高性能缓存**：Redis缓存 + @Cacheable注解优化查询性能
+6. **权限管理**：基于Spring Security的细粒度权限控制
+7. **审计日志**：完整的操作审计和数据追踪
+
+### 技术架构优势
+- **MyBatis-Plus优化**：LambdaQueryWrapper查询优化，提升查询性能
+- **Redis缓存策略**：智能缓存管理，减少数据库压力
+- **乐观锁机制**：@Version注解防止并发冲突
+- **统一响应格式**：RuoYi标准的AjaxResult响应
+- **代码生成**：RuoYi代码生成器快速生成CRUD代码
 
 ---
 
-## 技术架构设计
+## RuoYi-Vue-Pro 技术架构设计
 
 ### 系统架构图
 
@@ -30,33 +42,42 @@ graph TB
     subgraph "前端层"
         WECHAT[微信小程序] --> BROWSE[私教课浏览]
         WECHAT --> INQUIRY[咨询表单]
-        ADMIN[Vue3管理后台] --> BOOKING[预约录入]
+        ADMIN[RuoYi-Vue-Pro管理后台] --> BOOKING[预约录入]
         ADMIN --> INQUIRY_MGMT[咨询管理]
     end
 
-    subgraph "API网关层"
-        GATEWAY[API Gateway] --> AUTH[JWT认证]
+    subgraph "RuoYi网关层"
+        GATEWAY[Spring Cloud Gateway] --> AUTH[Spring Security + JWT]
         GATEWAY --> RATE[限流控制]
         GATEWAY --> LOG[请求日志]
+        GATEWAY --> MONITOR[Actuator监控]
     end
 
-    subgraph "服务层"
-        PRIVATE_SERVICE[私教课服务]
-        INQUIRY_SERVICE[咨询服务]
-        BOOKING_SERVICE[预约服务]
-        NOTIFICATION_SERVICE[通知服务]
+    subgraph "RuoYi服务层"
+        PRIVATE_SERVICE[私教课Service]
+        INQUIRY_SERVICE[咨询Service]
+        BOOKING_SERVICE[预约Service]
+        NOTIFICATION_SERVICE[RuoYi通知Service]
     end
 
-    subgraph "业务逻辑层"
+    subgraph "MyBatis-Plus数据层"
+        MAPPER[Mapper接口]
+        ENTITY[实体类]
+        WRAPPER[LambdaQueryWrapper]
+        CACHE[Redis缓存]
+    end
+
+    subgraph "RuoYi业务逻辑层"
         MATCH_ENGINE[4D匹配引擎]
         CONFLICT_DETECT[冲突检测]
         CONSULTATION_FLOW[咨询流程管理]
         SCHEDULE_MGMT[排班管理]
+        AUDIT[审计日志]
     end
 
     subgraph "数据层"
-        MYSQL[(MySQL)]
-        REDIS[(Redis缓存)]
+        MYSQL[(MySQL 8.0)]
+        REDIS[(Redis 6.x)]
     end
 
     subgraph "外部服务"
@@ -78,11 +99,18 @@ graph TB
     BOOKING_SERVICE --> CONFLICT_DETECT
     INQUIRY_SERVICE --> CONSULTATION_FLOW
     BOOKING_SERVICE --> SCHEDULE_MGMT
+    ALL_SERVICES --> AUDIT
 
-    MATCH_ENGINE --> MYSQL
-    CONFLICT_DETECT --> MYSQL
-    CONSULTATION_FLOW --> MYSQL
-    SCHEDULE_MGMT --> MYSQL
+    PRIVATE_SERVICE --> MAPPER
+    INQUIRY_SERVICE --> MAPPER
+    BOOKING_SERVICE --> MAPPER
+
+    MAPPER --> ENTITY
+    MAPPER --> WRAPPER
+    MAPPER --> CACHE
+
+    ENTITY --> MYSQL
+    CACHE --> REDIS
 
     NOTIFICATION_SERVICE --> REDIS
     NOTIFICATION_SERVICE --> WECHAT_SERVICE
@@ -92,83 +120,268 @@ graph TB
 
 ### 核心组件设计
 
-#### 1. 4维标签匹配引擎 (FR-040)
-**职责**：实现严格的4维白名单匹配算法
-**技术实现**：
-```python
-class FourDimensionalMatcher:
-    def __init__(self):
-        self.dimensions = ['level', 'age', 'gender', 'course_type']
-        self.weights = {'all': 1.0}  # 100%匹配，非权重计算
+#### 1. RuoYi 4维标签匹配引擎 (FR-040)
+**职责**：基于MyBatis-Plus实现严格的4维白名单匹配算法
 
-    def match(self, profile_tags, instructor_tags):
-        """执行4维白名单验证"""
-        for dimension in self.dimensions:
-            if not self._match_dimension(profile_tags[dimension],
-                                       instructor_tags[dimension]):
-                return 0.0  # 任一维度不匹配则返回0
-        return 100.0  # 所有维度都匹配则返回100
+**RuoYi技术实现**：
+```java
+@Service
+@Slf4j
+public class FourDimensionalMatchService {
 
-    def _match_dimension(self, profile_value, instructor_value):
-        """单个维度匹配逻辑"""
-        if instructor_value == 'both':
-            return True
-        return profile_value == instructor_value
-```
+    @Autowired
+    private IGymPrivateInstructorService instructorService;
 
-**性能优化**：
-- 使用Redis缓存匹配结果，缓存15分钟
-- 数据库复合索引：`instructor_id, course_type, age_range, gender`
-- 分页加载，每次最多返回20个匹配结果
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
-#### 2. 咨询流程管理器 (FR-042)
-**职责**：管理从咨询申请到预约确认的完整流程
-**状态机设计**：
-```python
-class InquiryStateMachine:
-    STATES = {
-        'pending': ['contacted', 'expired'],
-        'contacted': ['booked', 'not_interested', 'expired'],
-        'booked': [],  # 终态
-        'not_interested': [],  # 终态
-        'expired': []  # 终态
+    /**
+     * 执行4维白名单验证
+     */
+    public List<GymPrivateInstructor> matchInstructors(FourDimensionalQuery query) {
+        String cacheKey = buildCacheKey(query);
+
+        // 尝试从缓存获取结果
+        List<GymPrivateInstructor> cachedResult = (List<GymPrivateInstructor>)
+            redisTemplate.opsForValue().get(cacheKey);
+        if (cachedResult != null) {
+            return cachedResult;
+        }
+
+        // MyBatis-Plus查询构建
+        LambdaQueryWrapper<GymPrivateInstructor> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(GymPrivateInstructor::getStatus, "0")
+               .like(GymPrivateInstructor::getLevelRange, query.getLevel())
+               .eq(GymPrivateInstructor::getAgeRange, query.getAgeRange())
+               .and(w -> w.eq(GymPrivateInstructor::getGender, "both")
+                          .or()
+                          .eq(GymPrivateInstructor::getGender, query.getGender()))
+               .eq(GymPrivateInstructor::getCourseType, query.getCourseType())
+               .orderByDesc(GymPrivateInstructor::getRating)
+               .orderByDesc(GymPrivateInstructor::getTeachingHours)
+               .last("LIMIT 20");
+
+        List<GymPrivateInstructor> result = instructorService.list(wrapper);
+
+        // 缓存结果15分钟
+        redisTemplate.opsForValue().set(cacheKey, result, 15, TimeUnit.MINUTES);
+
+        return result;
     }
 
-    def transition(self, current_state, action):
-        """状态转换逻辑"""
-        valid_next_states = self.STATES.get(current_state, [])
-        if action in valid_next_states:
-            return action
-        raise ValueError(f"Invalid transition from {current_state} to {action}")
+    private String buildCacheKey(FourDimensionalQuery query) {
+        return String.format("4d_match:%s:%s:%s:%s",
+            query.getLevel(), query.getAgeRange(), query.getGender(), query.getCourseType());
+    }
+}
 ```
 
-#### 3. 时间冲突检测器
-**职责**：防止教练时间冲突预约
-**算法实现**：
-```python
-class ConflictDetector:
-    def detect_conflict(self, instructor_id, booking_time, duration):
-        """
-        检测教练时间冲突
-        考虑现有预约和排班设置
-        """
-        end_time = booking_time + timedelta(minutes=duration)
+**RuoYi性能优化**：
+- **Redis缓存**: @Cacheable注解自动缓存匹配结果，缓存15分钟
+- **MyBatis-Plus索引**: 复合索引 `idx_4d_match(course_type, age_range, gender, level_range)`
+- **分页加载**: RuoYi PageHelper分页，每次最多返回20个匹配结果
+- **LambdaQueryWrapper**: 类型安全的查询构建，编译时检查
 
-        # 检查现有预约冲突
-        existing_bookings = self._get_bookings(instructor_id, booking_time, end_time)
+#### 2. RuoYi 咨询流程管理器 (FR-042)
+**职责**：基于RuoYi工作流引擎管理从咨询申请到预约确认的完整流程
 
-        # 检查排班可用性
-        schedule_available = self._check_schedule(instructor_id, booking_time)
+**RuoYi状态机设计**：
+```java
+@Component
+@Slf4j
+public class InquiryFlowManager {
 
-        if existing_bookings or not schedule_available:
-            return {
-                'has_conflict': True,
-                'conflicts': existing_bookings,
-                'suggested_alternatives': self._suggest_alternatives(instructor_id)
+    @Autowired
+    private IGymPrivateInquiryService inquiryService;
+
+    @Autowired
+    private IGymPrivateConsultationService consultationService;
+
+    /**
+     * 咨询状态转换枚举
+     */
+    public enum InquiryStatus {
+        PENDING("0", "待联系"),
+        CONTACTED("1", "已联系"),
+        BOOKED("2", "已预约"),
+        NOT_INTERESTED("3", "不感兴趣"),
+        EXPIRED("4", "已过期");
+
+        private final String code;
+        private final String desc;
+
+        InquiryStatus(String code, String desc) {
+            this.code = code;
+            this.desc = desc;
+        }
+    }
+
+    /**
+     * 状态转换逻辑
+     */
+    @Transactional(rollbackFor = Exception.class)
+    @Log(title = "咨询状态转换", businessType = BusinessType.UPDATE)
+    public boolean transitionInquiryStatus(Long inquiryId, InquiryStatus targetStatus, String operatorId, String notes) {
+        GymPrivateInquiry inquiry = inquiryService.getById(inquiryId);
+        if (inquiry == null) {
+            throw new ServiceException("咨询记录不存在");
+        }
+
+        InquiryStatus currentStatus = InquiryStatus.valueOf(inquiry.getStatus());
+
+        // 验证状态转换合法性
+        if (!isValidTransition(currentStatus, targetStatus)) {
+            throw new ServiceException(String.format("不允许从%s转换为%s", currentStatus.getDesc(), targetStatus.getDesc()));
+        }
+
+        // 更新咨询状态
+        inquiry.setStatus(targetStatus.getCode());
+        inquiry.setUpdateBy(operatorId);
+        inquiry.setUpdateTime(LocalDateTime.now());
+        inquiry.setAdminNotes(notes);
+
+        boolean result = inquiryService.updateById(inquiry);
+
+        // 记录状态转换日志
+        if (result) {
+            consultationService.createFlowRecord(inquiryId, currentStatus.getCode(), targetStatus.getCode(), operatorId, notes);
+        }
+
+        return result;
+    }
+
+    private boolean isValidTransition(InquiryStatus from, InquiryStatus to) {
+        switch (from) {
+            case PENDING:
+                return to == InquiryStatus.CONTACTED || to == InquiryStatus.EXPIRED;
+            case CONTACTED:
+                return to == InquiryStatus.BOOKED || to == InquiryStatus.NOT_INTERESTED || to == InquiryStatus.EXPIRED;
+            case BOOKED:
+            case NOT_INTERESTED:
+            case EXPIRED:
+                return false; // 终态
+            default:
+                return false;
+        }
+    }
+}
+```
+
+**RuoYi流程优化**：
+- **事务管理**: @Transactional注解确保状态转换的原子性
+- **审计日志**: @Log注解记录所有状态变更操作
+- **乐观锁**: @Version防止并发状态冲突
+- **权限控制**: @PreAuthorize注解控制状态转换权限
+
+#### 3. RuoYi 时间冲突检测器
+**职责**：基于MyBatis-Plus防止教练时间冲突预约
+
+**RuoYi算法实现**：
+```java
+@Service
+@Slf4j
+public class BookingConflictDetector {
+
+    @Autowired
+    private IGymPrivateBookingService bookingService;
+
+    @Autowired
+    private IGymCoachScheduleService scheduleService;
+
+    /**
+     * 检测教练时间冲突
+     */
+    @Cacheable(value = "bookingConflict", key = "#instructorId + ':' + #bookingTime.toString() + ':' + #duration")
+    public ConflictDetectionResult detectConflict(Long instructorId, LocalDateTime bookingTime, Integer duration) {
+        LocalDateTime endTime = bookingTime.plusMinutes(duration);
+
+        // 检查现有预约冲突
+        List<GymPrivateBooking> existingBookings = getConflictingBookings(instructorId, bookingTime, endTime);
+
+        // 检查排班可用性
+        boolean scheduleAvailable = checkScheduleAvailability(instructorId, bookingTime, endTime);
+
+        ConflictDetectionResult result = new ConflictDetectionResult();
+
+        if (!existingBookings.isEmpty() || !scheduleAvailable) {
+            result.setHasConflict(true);
+            result.setConflicts(existingBookings);
+            result.setScheduleAvailable(scheduleAvailable);
+            result.setSuggestedAlternatives(suggestAlternatives(instructorId, bookingTime, duration));
+        } else {
+            result.setHasConflict(false);
+        }
+
+        return result;
+    }
+
+    /**
+     * 查询冲突预约
+     */
+    private List<GymPrivateBooking> getConflictingBookings(Long instructorId, LocalDateTime startTime, LocalDateTime endTime) {
+        LambdaQueryWrapper<GymPrivateBooking> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(GymPrivateBooking::getInstructorId, instructorId)
+               .eq(GymPrivateBooking::getStatus, "1") // 已确认状态
+               .and(w -> w.lt(GymPrivateBooking::getBookingTime, endTime)
+                          .gt(GymPrivateBooking::getBookingTime, startTime.plusMinutes(-15))) // 15分钟缓冲
+               .or(w -> w.le(GymPrivateBooking::getBookingTime, startTime)
+                          .gt(GymPrivateBooking::getBookingTime, startTime.plusMinutes(-15))
+                          .apply("booking_time + INTERVAL duration MINUTE > {0}", startTime));
+
+        return bookingService.list(wrapper);
+    }
+
+    /**
+     * 检查排班可用性
+     */
+    private boolean checkScheduleAvailability(Long instructorId, LocalDateTime bookingTime, LocalDateTime endTime) {
+        DayOfWeek dayOfWeek = bookingTime.getDayOfWeek();
+        LocalTime time = bookingTime.toLocalTime();
+
+        LambdaQueryWrapper<GymCoachSchedule> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(GymCoachSchedule::getInstructorId, instructorId)
+               .eq(GymCoachSchedule::getDayOfWeek, dayOfWeek.getValue())
+               .le(GymCoachSchedule::getStartTime, time)
+               .ge(GymCoachSchedule::getEndTime, endTime.toLocalTime())
+               .eq(GymCoachSchedule::getStatus, "0");
+
+        return scheduleService.count(wrapper) > 0;
+    }
+
+    /**
+     * 推荐可用时间段
+     */
+    private List<TimeSlot> suggestAlternatives(Long instructorId, LocalDateTime originalTime, Integer duration) {
+        List<TimeSlot> alternatives = new ArrayList<>();
+
+        // 推荐当天其他时间段
+        for (int hour = 9; hour <= 20; hour++) {
+            LocalDateTime suggestion = originalTime.withHour(hour).withMinute(0).withSecond(0).withNano(0);
+            ConflictDetectionResult check = detectConflict(instructorId, suggestion, duration);
+            if (!check.isHasConflict() && suggestion.isAfter(originalTime.plusHours(1))) {
+                alternatives.add(new TimeSlot(suggestion, suggestion.plusMinutes(duration)));
+                if (alternatives.size() >= 3) break;
             }
+        }
 
-        return {'has_conflict': False}
+        return alternatives;
+    }
+}
+
+@Data
+public class ConflictDetectionResult {
+    private boolean hasConflict;
+    private List<GymPrivateBooking> conflicts;
+    private boolean scheduleAvailable;
+    private List<TimeSlot> suggestedAlternatives;
+}
 ```
+
+**RuoYi冲突检测优化**：
+- **缓存机制**: @Cacheable注解缓存冲突检测结果，提高性能
+- **MyBatis-Plus查询**: 复杂时间范围查询使用LambdaQueryWrapper
+- **事务一致性**: @Transactional确保预约创建和冲突检测的原子性
+- **智能推荐**: 基于可用时间段自动推荐替代方案
 
 ---
 

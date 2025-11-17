@@ -1,11 +1,13 @@
-# Feature Specification: Payment Integration System
+# 功能规格说明：支付集成系统
 
-**Feature Branch**: `005-payment-integration`
-**Created**: 2025-10-27
-**Status**: Draft
+**功能分支**: `005-payment-integration`
+**创建时间**: 2025-10-27
+**状态**: Draft
 **MVP**: MVP-3
-**Dependencies**: MVP-1 (001-user-identity-system), MVP-2A (002-course-display-and-booking)
-**Input**: "Build a payment integration system that supports WeChat payment for trial classes with fixed pricing (200 yuan per session), ensuring secure payment processing and immediate seat reservation upon successful payment."
+**依赖关系**: MVP-1 (001-user-identity-system), MVP-2A (002-course-display-and-booking)
+**输入需求**: "构建支付集成系统，支持体验课微信支付，固定价格200元每节，确保安全支付处理和成功付款后立即座位预留"
+**版本**: v2.0.0 RuoYi架构重构
+**重构日期**: 2025-11-17
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -70,18 +72,73 @@
 
 ---
 
-## Requirements *(mandatory)*
+## RuoYi架构设计
 
-### Functional Requirements
+### 技术栈升级
 
-#### 支付发起相关
-- **FR-001**: 系统必须支持生成体验课支付订单（关联预约记录）
-- **FR-002**: 系统必须调用微信支付API获取支付参数
-- **FR-003**: 系统必须使用固定价格200元，不支持动态定价
-- **FR-004**: 系统必须在订单中记录固定支付金额200元和课程信息
-- **FR-005**: 系统必须在支付界面准确显示固定价格200元
-- **FR-006**: 系统必须限制每个微信OpenID只能预约一次体验课
-- **FR-007**: 重复预约时系统必须提示"您已预约过体验课，无法重复预约"
+**后端架构**：
+- **框架**: Spring Boot 2.7.x + RuoYi-Vue-Pro
+- **ORM**: MyBatis-Plus 3.5.x (LambdaQueryWrapper查询优化)
+- **缓存**: Redis 6.x (Spring Cache + @Cacheable注解)
+- **数据库**: MySQL 8.0 (主从复制)
+- **认证**: Spring Security + JWT Token
+- **事务**: @Transactional注解管理
+- **日志**: Spring Boot Actuator + Logback + RuoYi @Log注解
+- **API文档**: Swagger 3.0 (OpenAPI)
+- **定时任务**: Spring @Scheduled
+
+**支付集成**：
+- **微信支付**: 微信支付Java SDK
+- **签名验证**: RuoYi统一签名验证机制
+- **幂等性**: Redis分布式锁 + MyBatis-Plus乐观锁
+
+### RuoYi架构核心优势
+
+- **统一响应格式**: RuoYi标准的AjaxResult响应
+- **权限控制**: @PreAuthorize注解细粒度权限
+- **审计日志**: @Log注解自动记录支付操作
+- **事务管理**: @Transactional确保支付流程原子性
+- **代码生成**: RuoYi代码生成器快速生成CRUD
+- **异常处理**: RuoYi全局异常处理器
+
+## 功能需求 (基于RuoYi架构重构)
+
+### 支付发起相关 (FR-001~FR-007)
+
+- **FR-001**: 系统必须基于RuoYi Service层支持生成体验课支付订单（关联预约记录）
+- **FR-002**: 系统必须集成微信支付Java SDK获取支付参数，使用RuoYi远程调用服务
+- **FR-003**: 系统必须使用固定价格200元，通过RuoYi数据验证确保价格不可篡改
+- **FR-004**: 系统必须在订单中记录固定支付金额200元和课程信息，基于MyBatis-Plus实体
+- **FR-005**: 系统必须在支付界面准确显示固定价格200元，使用RuoYi数据传输对象
+- **FR-006**: 系统必须限制每个微信OpenID只能预约一次体验课，使用RuoYi缓存机制
+- **FR-007**: 重复预约时系统必须提示"您已预约过体验课，无法重复预约"，使用RuoYi消息提示
+
+### 支付回调处理 (FR-008~FR-012)
+
+- **FR-008**: 系统必须接收微信支付回调通知，使用RuoYi Controller层处理
+- **FR-009**: 系统必须验证微信支付回调的签名，集成RuoYi安全验证组件
+- **FR-010**: 系统必须检查订单是否已处理（防止重复回调），使用Redis分布式锁
+- **FR-011**: 支付成功后必须自动创建预约记录并锁定课程名额，使用@Transactional确保一致性
+- **FR-012**: 系统必须记录支付完成时间和交易流水号，基于RuoYi审计日志系统
+
+### 支付失败处理 (FR-013~FR-015)
+
+- **FR-013**: 系统必须在支付失败后立即释放课程名额，使用MyBatis-Plus事务回滚
+- **FR-014**: 系统必须支持支付失败时的用户提示和错误处理，使用RuoYi统一异常处理
+- **FR-015**: 系统必须处理网络异常等临时性支付失败，使用Spring Retry重试机制
+
+### 退款处理 (FR-018~FR-020)
+
+- **FR-018**: 体验课退款必须由运营人员手动发起，系统不自动生成退款任务，使用RuoYi权限控制
+- **FR-019**: 系统必须根据用户注册信息而非absent标记判断是否需要退款
+- **FR-020**: 系统必须支持运营通过后台系统发起微信原路退款，并记录完整的RuoYi审计操作日志
+
+### 安全验证 (FR-021~FR-024)
+
+- **FR-021**: 系统必须验证支付回调的来源真实性，使用RuoYi安全验证框架
+- **FR-022**: 系统必须防止订单金额篡改，通过MyBatis-Plus数据验证层
+- **FR-023**: 系统必须记录支付操作日志，使用RuoYi @Log注解自动审计
+- **FR-024**: 系统必须确保支付金额为固定200元（防价格篡改），通过RuoYi业务规则验证
 
 #### 支付回调相关
 - **FR-008**: 系统必须接收微信支付回调通知
@@ -106,22 +163,255 @@
 - **FR-023**: 系统必须记录支付操作日志
 - **FR-024**: 系统必须确保支付金额为固定200元（防价格篡改）
 
-### Key Entities
+## RuoYi-MyBatis-Plus 核心实体设计
 
-- **payment_order**: 支付订单实体，记录支付交易信息
-  - 核心属性: id, order_id, user_id, student_id, course_id, amount(固定200), status(paid/refunded), wechat_order_id, prepay_id, paid_at, created_at
-  - 业务规则: 每个订单对应一次体验课支付，固定价格200元，有唯一订单号
+### GymPaymentOrder（支付订单实体）
+```java
+@Data
+@TableName("gym_payment_order")
+@Accessors(chain = true)
+public class GymPaymentOrder extends BaseEntity implements Serializable {
+    private static final long serialVersionUID = 1L;
 
-- **payment_callback**: 支付回调记录实体，记录微信支付回调信息
-  - 核心属性: id, order_id, callback_data, signature, processed, created_at
-  - 业务规则: 用于审计和排查支付问题，确保回调处理的可追溯性
+    @TableId(value = "payment_id", type = IdType.AUTO)
+    private Long paymentId;
+
+    @TableField("order_no")
+    private String orderNo; // 订单号
+
+    @TableField("user_id")
+    private Long userId;
+
+    @TableField("profile_id")
+    private Long profileId;
+
+    @TableField("course_schedule_id")
+    private Long courseScheduleId;
+
+    @TableField("amount")
+    private BigDecimal amount; // 固定200.00
+
+    @TableField("currency")
+    private String currency; // CNY
+
+    @TableField("status")
+    private String status; // pending/paid/failed/cancelled/expired
+
+    @TableField("payment_method")
+    private String paymentMethod; // wechat_pay
+
+    @TableField("wechat_order_id")
+    private String wechatOrderId;
+
+    @TableField("prepay_id")
+    private String prepayId;
+
+    @TableField("paid_time")
+    private LocalDateTime paidTime;
+
+    @TableField("expires_time")
+    private LocalDateTime expiresTime;
+
+    @Version
+    @TableField("version")
+    private Integer version;
+
+    @TableField("del_flag")
+    private String delFlag;
+}
+```
+
+### GymPaymentTransaction（支付交易实体）
+```java
+@Data
+@TableName("gym_payment_transaction")
+@Accessors(chain = true)
+public class GymPaymentTransaction extends BaseEntity implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    @TableId(value = "transaction_id", type = IdType.AUTO)
+    private Long transactionId;
+
+    @TableField("payment_id")
+    private Long paymentId;
+
+    @TableField("wechat_transaction_id")
+    private String wechatTransactionId;
+
+    @TableField("out_trade_no")
+    private String outTradeNo;
+
+    @TableField("trade_type")
+    private String tradeType; // NATIVE
+
+    @TableField("trade_state")
+    private String tradeState;
+
+    @TableField("bank_type")
+    private String bankType;
+
+    @TableField("settlement_total_fee")
+    private BigDecimal settlementTotalFee;
+
+    @TableField("cash_fee")
+    private BigDecimal cashFee;
+
+    @TableField("transaction_fee")
+    private BigDecimal transactionFee;
+
+    @TableField("total_fee")
+    private Long totalFee; // 分为单位
+
+    @TableField("fee_type")
+    private String feeType; // CNY
+
+    @TableField("time_end")
+    private String timeEnd;
+
+    @TableField("is_subscribe")
+    private String isSubscribe; // Y/N
+
+    @TableField("openid")
+    private String openid;
+
+    @Version
+    @TableField("version")
+    private Integer version;
+}
+```
+
+### GymSeatReservation（座位预留实体）
+```java
+@Data
+@TableName("gym_seat_reservation")
+@Accessors(chain = true)
+public class GymSeatReservation extends BaseEntity implements Serializable {
+    private static final long serialVersionUID = 1L;
+
+    @TableId(value = "reservation_id", type = IdType.AUTO)
+    private Long reservationId;
+
+    @TableField("payment_id")
+    private Long paymentId;
+
+    @TableField("course_schedule_id")
+    private Long courseScheduleId;
+
+    @TableField("user_id")
+    private Long userId;
+
+    @TableField("seat_count")
+    private Integer seatCount; // 固定为1
+
+    @TableField("status")
+    private String status; // temporary/confirmed/cancelled/expired
+
+    @TableField("expires_time")
+    private LocalDateTime expiresTime; // 15分钟过期
+
+    @TableField("confirmed_time")
+    private LocalDateTime confirmedTime;
+
+    @Version
+    @TableField("version")
+    private Integer version;
+}
+```
+
+### RuoYi业务服务层设计
+```java
+@Service
+@Slf4j
+public class GymPaymentOrderServiceImpl extends ServiceImpl<GymPaymentOrderMapper, GymPaymentOrder> implements IGymPaymentOrderService {
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @Log(title = "支付订单创建", businessType = BusinessType.INSERT)
+    public boolean createPaymentOrder(GymPaymentOrderDTO paymentOrderDTO) {
+        // 1. 验证固定价格200元
+        if (paymentOrderDTO.getAmount().compareTo(new BigDecimal("200.00")) != 0) {
+            throw new ServiceException("支付金额必须为200元");
+        }
+
+        // 2. 检查重复预约
+        LambdaQueryWrapper<GymPaymentOrder> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(GymPaymentOrder::getUserId, paymentOrderDTO.getUserId())
+                   .eq(GymPaymentOrder::getStatus, "paid")
+                   .apply("created_at > DATE_SUB(NOW(), INTERVAL 30 DAY)");
+
+        if (this.count(queryWrapper) > 0) {
+            throw new ServiceException("您已预约过体验课，无法重复预约");
+        }
+
+        // 3. 创建支付订单
+        GymPaymentOrder paymentOrder = BeanUtil.toBean(paymentOrderDTO, GymPaymentOrder.class);
+        paymentOrder.setOrderNo(generateOrderNo());
+        paymentOrder.setStatus("pending");
+        paymentOrder.setExpiresTime(LocalDateTime.now().plusMinutes(30));
+
+        return this.save(paymentOrder);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @Log(title = "支付回调处理", businessType = BusinessType.UPDATE)
+    public boolean handlePaymentCallback(String wechatTransactionId, String outTradeNo) {
+        // 使用分布式锁防止重复处理
+        String lockKey = "payment_callback:" + outTradeNo;
+        return redisTemplate.execute(
+            new SetOperations().setIfAbsent(lockKey, "1", 10, TimeUnit.SECONDS),
+            () -> processPaymentCallback(wechatTransactionId, outTradeNo)
+        );
+    }
+}
+```
+
+### RuoYi控制器层设计
+```java
+@RestController
+@RequestMapping("/gym/payment")
+@Api(tags = "支付管理")
+@RequiredArgsConstructor
+public class GymPaymentController extends BaseController {
+
+    private final IGymPaymentOrderService paymentOrderService;
+
+    @PostMapping("/order/create")
+    @ApiOperation("创建支付订单")
+    @PreAuthorize("@ss.hasPermi('gym:payment:add')")
+    public AjaxResult createPaymentOrder(@Valid @RequestBody GymPaymentOrderDTO paymentOrderDTO) {
+        return toAjax(paymentOrderService.createPaymentOrder(paymentOrderDTO));
+    }
+
+    @PostMapping("/wxpay/callback")
+    @ApiOperation("微信支付回调")
+    public String handleWxPayCallback(@RequestBody String callbackData) {
+        try {
+            // 验证签名
+            if (!wxPayService.verifySignature(callbackData)) {
+                return "FAIL";
+            }
+
+            // 处理回调
+            boolean success = paymentOrderService.handlePaymentCallback(
+                getTransactionId(callbackData),
+                getOutTradeNo(callbackData)
+            );
+
+            return success ? "SUCCESS" : "FAIL";
+        } catch (Exception e) {
+            log.error("微信支付回调处理失败", e);
+            return "FAIL";
+        }
+    }
+}
+```
 
 ---
 
-## 成功标准 *(mandatory)*
+## RuoYi架构成功指标
 
-### Measurable Outcomes
-
+### 技术性能指标
 - **SC-001**: 支付发起成功率大于99%（排除用户主动取消）
 - **SC-002**: 支付回调处理准确率100%（无错误更新订单状态）
 - **SC-003**: 支付成功到账率100%（与微信对账一致）
@@ -129,6 +419,16 @@
 - **SC-005**: 支付失败名额释放及时率100%
 - **SC-006**: 重复预约拦截率100%
 - **SC-007**: 体验课OpenID限制准确率100%
+
+### RuoYi架构质量指标
+- **SC-008**: MyBatis-Plus查询优化率>95%，LambdaQueryWrapper使用率100%
+- **SC-009**: Spring事务管理正确率100%，@Transactional注解覆盖所有关键支付业务
+- **SC-010**: Redis分布式锁成功率>99%，防止重复支付回调处理
+- **SC-011**: RuoYi审计日志完整性100%，@Log注解记录所有支付操作
+- **SC-012**: 微信支付签名验证准确率100%，集成RuoYi安全验证框架
+- **SC-013**: 乐观锁并发控制成功率>99%，@Version字段防止支付冲突
+- **SC-014**: RuoYi统一响应格式使用率100%，AjaxResult/AjaxPageResult规范输出
+- **SC-015**: 代码生成器利用率>80%，使用RuoYi代码生成器快速生成CRUD
 
 ---
 
@@ -154,13 +454,104 @@
 
 ---
 
-## Open Questions
+## RuoYi架构集成点
 
-1. **[NEEDS CLARIFICATION]** 微信支付回调处理超时如何设置？
-   - 建议: 设置5秒超时，确保回调处理及时完成
+### RuoYi-Vue-Pro 系统集成
 
-2. **[NEEDS CLARIFICATION]** 支付失败重试机制如何设计？
-   - 建议: 用户手动重新发起支付，不自动重试
+#### 与RuoYi核心模块的依赖关系
+- **RuoYi用户认证**: 集成Spring Security + JWT，使用@PreAuthorize权限控制支付操作
+- **RuoYi系统监控**: 集成Spring Boot Actuator，支持支付系统健康检查和性能监控
+- **RuoYi代码生成**: 使用RuoYi代码生成器快速生成支付CRUD代码
+- **RuoYi通知服务**: 集成RuoYi消息通知，支持支付成功/失败通知
+- **RuoYi文件管理**: 集成RuoYi文件存储服务，支持支付凭证上传
 
-3. **[NEEDS CLARIFICATION]** 重复预约限制是否包含已取消的体验课？
-   - 建议: 已支付但取消的体验课不计入重复预约限制，用户可重新预约
+#### 与MVP-1的RuoYi架构集成
+- **用户身份系统**: 基于RuoYi权限管理的用户登录和身份验证
+- **学员档案**: 支付时关联学员档案信息
+
+#### 与MVP-2A的RuoYi架构集成
+- **课程显示系统**: 复用RuoYi架构的课程展示逻辑和Vue3组件
+- **预约系统**: 支付成功后自动创建预约记录
+
+#### 与MVP-6的RuoYi架构集成
+- **钱包系统**: 支付记录集成到钱包系统，支持余额查询
+
+### RuoYi部署架构
+```yaml
+# Docker Compose - RuoYi-Vue-Pro支付系统部署
+version: '3.8'
+services:
+  ruoyi-gym-payment:
+    image: ruoyi/gympayment:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - REDIS_HOST=redis
+      - MYSQL_HOST=mysql
+      - WECHAT_PAY_MCH_ID=${WECHAT_PAY_MCH_ID}
+      - WECHAT_PAY_API_KEY=${WECHAT_PAY_API_KEY}
+    depends_on:
+      - redis
+      - mysql
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=root123
+      - MYSQL_DATABASE=gym_management
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:6.2-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+  redis_data:
+```
+
+### RuoYi安全架构
+```java
+@Configuration
+@EnableWebSecurity
+public class PaymentSecurityConfig {
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+        http.authorizeHttpRequests(authz -> authz
+                .requestMatchers("/gym/payment/wxpay/callback").permitAll()
+                .requestMatchers("/gym/payment/**").hasAnyRole("USER", "ADMIN")
+                .anyRequest().authenticated()
+            )
+            .addFilterBefore(new JwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+        return http.build();
+    }
+}
+```
+
+---
+
+## Open Questions (RuoYi架构优化)
+
+1. **[RuoYi优化]** 微信支付回调处理超时如何设置？
+   - 建议: 使用RuoYi @Transactional超时设置5秒，确保回调处理及时完成
+
+2. **[RuoYi优化]** 支付失败重试机制如何设计？
+   - 建议: 使用Spring Retry注解实现用户手动重新发起支付，不自动重试
+
+3. **[RuoYi优化]** 重复预约限制是否包含已取消的体验课？
+   - 建议: 基于RuoYi缓存和数据库查询，已支付但取消的体验课不计入重复预约限制
+
+**创建人**: [AI Claude - RuoYi架构重构]
+**最后更新**: 2025-11-17
+**版本**: v2.0.0 RuoYi架构重构
+**状态**: 已完成架构迁移

@@ -4,6 +4,19 @@
 **Created**: [DATE]
 **Total Tasks**: [number]
 
+## Task Tags Legend *(Principle 10-18)*
+
+- **[REFACTOR-DRY]**: 抽取重复逻辑为共享模块的任务 (Principle 10)
+- **[SHARED-CREATE]**: 创建新共享组件的任务 (Principle 10)
+- **[SHARED-UPDATE]**: 更新已有共享模块的任务 (Principle 10)
+- **[SRP]**: 单一职责拆分任务 (Principle 11)
+- **[TRANSACTION]**: 需事务保护的任务 (Principle 14)
+- **[TEST-COVERAGE]**: 测试覆盖率要求>80%的任务 (Principle 16)
+- **[DOC-REQUIRED]**: 需编写JSDoc/README的任务 (Principle 18)
+- **[LINT-CONFIG]**: 需配置ESLint规则的任务 (Principle 17)
+- **[API-VERSIONING]**: 涉及API版本变更的任务 (Principle 15)
+- **[DEPENDENCY-INJECT]**: 需要依赖注入设计的任务 (Principle 12)
+
 ## Phase 1: Setup & Infrastructure
 
 ### T001: 初始化项目结构
@@ -11,10 +24,12 @@
 **Depends on**: None
 **Parallel**: No
 **Estimated Time**: [time]
+**Task Tags**: [LINT-CONFIG]
 **Done When**:
 - [ ] [Completion criteria 1]
 - [ ] [Completion criteria 2]
 - [ ] [Completion criteria 3]
+- [ ] ESLint配置完成并验证通过
 
 ### T002: [P] 配置开发环境
 **Description**: [Task description]
@@ -37,26 +52,37 @@
 
 ## Phase 2: Core Features
 
-### T004: 实现核心业务逻辑
+### T004: [SHARED-CREATE][TRANSACTION] 实现核心业务逻辑
 **Description**: [Task description]
 **Depends on**: T001, T002, T003
 **Parallel**: No
 **Estimated Time**: [time]
+**Task Tags**: [SHARED-CREATE] [TRANSACTION] [TEST-COVERAGE]
 **Done When**:
 - [ ] [Completion criteria 1]
 - [ ] [Completion criteria 2]
 - [ ] [Completion criteria 3]
 - [ ] [单元测试通过]
+- [ ] [测试覆盖率>80%]
+- [ ] [涉及数据库操作使用事务保护]
+- [ ] [创建的Service类可被其他MVP复用]
+- [ ] [所有导出函数包含JSDoc注释]
 
-### T005: [P] 实现API端点
+### T005: [P][API-VERSIONING][DEPENDENCY-INJECT] 实现API端点
 **Description**: [Task description]
 **Depends on**: T004
 **Parallel**: Yes
 **Estimated Time**: [time]
+**Task Tags**: [API-VERSIONING] [DEPENDENCY-INJECT] [DOC-REQUIRED]
 **Done When**:
 - [ ] [Completion criteria 1]
 - [ ] [Completion criteria 2]
 - [ ] [集成测试通过]
+- [ ] [API路径包含版本前缀/api/v1/]
+- [ ] [使用shared/utils/apiResponse.js统一响应格式]
+- [ ] [使用shared/middleware/authMiddleware.js认证]
+- [ ] [所有API端点包含JSDoc注释]
+- [ ] [API文档自动生成]
 
 ### T006: 实现前端页面
 **Description**: [Task description]

@@ -1,9 +1,10 @@
-# Feature Specification: User Identity System
+# Feature Specification: User Identity System (RuoYi架构版)
 
-**Feature Branch**: `001-user-identity-system`  
-**Created**: 2025-10-26  
-**Status**: Draft  
-**MVP**: MVP-1  
+**Feature Branch**: `001-user-identity-system`
+**Created**: 2025-11-17
+**Status**: Draft
+**MVP**: MVP-1
+**架构**: RuoYi-Vue-Pro (Spring Boot + MyBatis-Plus + Vue3)
 **Input**: "Build a user identity system where parents can login via WeChat, create profiles for themselves and their children, and switch between profiles to book classes."
 
 ---
@@ -241,23 +242,27 @@
 - **FR-030**: 系统必须验证relation_type枚举值('self'/'child'/'spouse')
 - **FR-039**: 系统必须验证虚拟年龄范围(2-18岁)和合理性差异
 
-### Key Entities
+### Key Entities (基于RuoYi架构)
 
-- **profile**: 档案实体,包含所有可报课人员(家长和孩子)的个人信息
-  - 核心属性:id, name, nickname, birthday, gender, phone, avatar_url, sports_background, status, virtual_age
+- **sys_user**: RuoYi用户表扩展,存储微信登录用户信息
+  - 核心属性:user_id, user_name, nick_name, openid, unionid, session_key, status, del_flag
+  - RuoYi标准:create_by, create_time, update_by, update_time, remark, version
+  - 业务规则:基于RuoYi sys_user表扩展微信字段，保持RuoYi标准规范
+
+- **gym_student_profile**: 学员档案实体,包含所有可报课人员(家长和孩子)的个人信息
+  - 核心属性:profile_id, user_id, student_name, birthday, gender, skill_level, virtual_age
+  - RuoYi标准:create_by, create_time, update_by, update_time, remark, version, status, del_flag
   - 业务规则:家长和孩子使用同一张表,字段完全一致;virtual_age用于课程匹配算法
 
-- **virtual_age_log**: 虚拟年龄变更记录实体,追踪虚拟年龄设置的历史变更
-  - 核心属性:id, profile_id, old_virtual_age, new_virtual_age, change_reason, admin_id, created_at
+- **gym_virtual_age_log**: 虚拟年龄变更记录实体,追踪虚拟年龄设置的历史变更
+  - 核心属性:log_id, profile_id, old_virtual_age, new_virtual_age, change_reason, create_by
+  - RuoYi标准:create_time, remark, version
   - 业务规则:记录每次虚拟年龄设置变更,支持运营分析和历史追溯
 
-- **account**: 微信账号实体,代表拥有登录权限的账号
-  - 核心属性:id, openid, profile_id
-  - 业务规则:每个account关联一个主档案(profile_id),即该微信账号属于谁
-
-- **profile_relation**: 档案关联关系,定义"谁能管理谁"和"报课目的"
-  - 核心属性:id, account_id, profile_id, relation_type, can_book
-  - 业务规则:relation_type映射报课目的 - self(自己报课)、child(给孩子报课)、spouse(给家人朋友报课)
+- **gym_student_relation**: 学员关联关系,定义"谁能管理谁"和"报课目的"
+  - 核心属性:relation_id, user_id, profile_id, relation_type, can_book, is_primary
+  - RuoYi标准:create_by, create_time, update_by, update_time, remark, version, status, del_flag
+  - 业务规则:relation_type映射报课目的 - self(自己报课)、child(给孩子报课)、family(给家人朋友报课)
 
 ---
 
@@ -286,14 +291,360 @@
 
 ---
 
+## 技术实现 (RuoYi架构)
+
+### 后端技术栈
+
+#### Spring Boot配置
+```yaml
+# application.yml 微信相关配置
+wechat:
+  miniapp:
+    app-id: ${WECHAT_APP_ID}
+    app-secret: ${WECHAT_APP_SECRET}
+  login:
+    jwt-secret: ${JWT_SECRET}
+    jwt-expiration: 2592000 # 30天
+
+# RuoYi标准配置
+ruoyi:
+  profile: /path/to/profile
+  addressEnabled: false
+```
+
+#### 微信登录Controller
+```java
+@RestController
+@RequestMapping("/gym/auth")
+public class GymAuthController extends BaseController {
+
+    @Autowired
+    private IGymAuthService gymAuthService;
+
+    @PostMapping("/wechat-login")
+    @Log(title = "微信登录", businessType = BusinessType.OTHER)
+    public AjaxResult wechatLogin(@RequestBody WechatLoginRequest request) {
+        String code = request.getCode();
+        if (StringUtils.isEmpty(code)) {
+            return AjaxResult.error("微信授权码不能为空");
+        }
+
+        try {
+            // 调用微信API获取OpenID
+            WechatUserInfo wechatUser = gymAuthService.getWechatUserInfo(code);
+
+            // 查询或创建用户
+            SysUser user = gymAuthService.findOrCreateUser(wechatUser);
+
+            // 生成JWT Token
+            String token = gymAuthService.generateToken(user);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("token", token);
+            result.put("user", user);
+            result.put("hasProfiles", gymAuthService.hasStudentProfiles(user.getUserId()));
+
+            return AjaxResult.success("登录成功", result);
+        } catch (Exception e) {
+            logger.error("微信登录失败", e);
+            return AjaxResult.error("登录失败：" + e.getMessage());
+        }
+    }
+}
+```
+
+#### 学员档案Service
+```java
+@Service
+@Transactional
+public class GymStudentProfileServiceImpl implements IGymStudentProfileService {
+
+    @Autowired
+    private GymStudentProfileMapper profileMapper;
+
+    @Autowired
+    private GymStudentRelationMapper relationMapper;
+
+    @Override
+    public List<GymStudentProfile> selectProfilesByUserId(Long userId) {
+        return profileMapper.selectProfilesByUserId(userId);
+    }
+
+    @Override
+    @Cacheable(value = "student_profile", key = "#profileId")
+    public GymStudentProfile selectGymStudentProfileByProfileId(Long profileId) {
+        return profileMapper.selectGymStudentProfileByProfileId(profileId);
+    }
+
+    @Override
+    @CacheEvict(value = "student_profile", key = "#profile.profileId")
+    public int insertGymStudentProfile(GymStudentProfile profile) {
+        // 设置默认值
+        profile.setStatus("0");
+        profile.setDelFlag("0");
+        profile.setVersion(0);
+
+        // 验证虚拟年龄合理性
+        validateVirtualAge(profile);
+
+        return profileMapper.insertGymStudentProfile(profile);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int createStudentProfileWithRelation(GymStudentProfile profile, String relationType) {
+        // 1. 插入学员档案
+        profileMapper.insertGymStudentProfile(profile);
+
+        // 2. 创建关联关系
+        GymStudentRelation relation = new GymStudentRelation();
+        relation.setUserId(SecurityUtils.getUserId());
+        relation.setProfileId(profile.getProfileId());
+        relation.setRelationType(relationType);
+        relation.setCanBook("1");
+        relation.setIsPrimary("0");
+
+        return relationMapper.insertGymStudentRelation(relation);
+    }
+
+    private void validateVirtualAge(GymStudentProfile profile) {
+        if (profile.getVirtualAge() != null) {
+            int actualAge = calculateAge(profile.getBirthday());
+            int virtualAge = profile.getVirtualAge();
+
+            if (virtualAge < 2 || virtualAge > 18) {
+                throw new ServiceException("虚拟年龄应在2-18岁范围内");
+            }
+
+            int ageDiff = Math.abs(actualAge - virtualAge);
+            if (ageDiff > 3) {
+                // 记录异常虚拟年龄设置
+                logVirtualAgeAnomaly(profile, actualAge, virtualAge);
+            }
+        }
+    }
+}
+```
+
+### MyBatis-Plus实体类
+
+#### GymStudentProfile实体
+```java
+@Data
+@EqualsAndHashCode(callSuper = true)
+@Accessors(chain = true)
+@TableName("gym_student_profile")
+public class GymStudentProfile extends BaseEntity {
+
+    private static final long serialVersionUID = 1L;
+
+    @TableId(value = "profile_id", type = IdType.AUTO)
+    private Long profileId;
+
+    @TableField("user_id")
+    private Long userId;
+
+    @TableField("student_name")
+    @NotBlank(message = "学员姓名不能为空")
+    @Size(max = 100, message = "学员姓名长度不能超过100个字符")
+    private String studentName;
+
+    @TableField("birthday")
+    @NotNull(message = "出生日期不能为空")
+    private Date birthday;
+
+    @TableField("gender")
+    @NotBlank(message = "性别不能为空")
+    private String gender;
+
+    @TableField("skill_level")
+    private String skillLevel;
+
+    @TableField("development_tag")
+    private String developmentTag;
+
+    @TableField("virtual_age")
+    @Min(value = 2, message = "虚拟年龄不能小于2")
+    @Max(value = 18, message = "虚拟年龄不能大于18")
+    private Integer virtualAge;
+
+    // 计算字段，不存数据库
+    @TableField(exist = false)
+    private Integer age;
+
+    @TableField(exist = false)
+    private String ageType; // adult/child
+
+    @TableField(exist = false)
+    private String relationType;
+}
+```
+
+### 小程序端集成
+
+#### 微信登录封装
+```javascript
+// utils/wechat-auth.js
+const wechatAuth = {
+  // 静默登录
+  async silentLogin() {
+    try {
+      // 获取登录凭证
+      const { code } = await wx.login();
+
+      // 调用后端登录接口
+      const response = await this.request({
+        url: '/gym/auth/wechat-login',
+        method: 'POST',
+        data: { code }
+      });
+
+      if (response.code === 200) {
+        // 存储Token和用户信息
+        wx.setStorageSync('token', response.data.token);
+        wx.setStorageSync('user', response.data.user);
+        wx.setStorageSync('hasProfiles', response.data.hasProfiles);
+
+        return response.data;
+      } else {
+        throw new Error(response.msg || '登录失败');
+      }
+    } catch (error) {
+      console.error('微信登录失败:', error);
+      throw error;
+    }
+  },
+
+  // 检查登录状态
+  checkLoginStatus() {
+    const token = wx.getStorageSync('token');
+    if (!token) {
+      return false;
+    }
+
+    // 检查Token是否过期（简单验证）
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const currentTime = Date.now() / 1000;
+      return payload.exp > currentTime;
+    } catch (error) {
+      return false;
+    }
+  },
+
+  // 获取当前用户信息
+  getCurrentUser() {
+    return wx.getStorageSync('user') || null;
+  }
+};
+
+module.exports = wechatAuth;
+```
+
+#### 学员档案管理
+```javascript
+// pages/profiles/profiles.js
+Page({
+  data: {
+    profiles: [],
+    currentProfile: null,
+    showCreateGuide: false
+  },
+
+  onLoad() {
+    this.checkLoginAndLoadProfiles();
+  },
+
+  async checkLoginAndLoadProfiles() {
+    // 检查登录状态
+    if (!wechatAuth.checkLoginStatus()) {
+      await wechatAuth.silentLogin();
+    }
+
+    // 加载学员档案
+    await this.loadProfiles();
+  },
+
+  async loadProfiles() {
+    try {
+      const response = await this.request({
+        url: '/gym/profile/list',
+        method: 'GET'
+      });
+
+      if (response.code === 200) {
+        this.setData({
+          profiles: response.data,
+          currentProfile: response.data.find(p => p.isPrimary) || response.data[0] || null,
+          showCreateGuide: response.data.length === 0
+        });
+      }
+    } catch (error) {
+      wx.showToast({
+        title: '加载档案失败',
+        icon: 'error'
+      });
+    }
+  },
+
+  // 切换当前档案
+  async switchProfile(e) {
+    const profileId = e.currentTarget.dataset.profileId;
+    const profile = this.data.profiles.find(p => p.profileId === profileId);
+
+    if (profile) {
+      // 设置当前档案
+      wx.setStorageSync('currentProfile', profile);
+
+      this.setData({
+        currentProfile: profile
+      });
+
+      wx.showToast({
+        title: `已切换至${profile.studentName}`,
+        icon: 'success'
+      });
+
+      // 触发页面刷新
+      this.triggerEvent('profileChanged', { profile });
+    }
+  },
+
+  // 创建学员档案
+  navigateToCreateProfile() {
+    wx.navigateTo({
+      url: '/pages/profiles/create'
+    });
+  }
+});
+```
+
+### 管理后台集成
+
+#### RuoYi菜单配置
+```sql
+-- 管理后台菜单配置
+INSERT INTO sys_menu (menu_name, parent_id, order_num, path, component, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
+VALUES
+('学员管理', 2000, 1, 'gymnastics', NULL, 1, 0, 'M', '0', '0', 'gymnastics:profile:list', 'people', 'admin', sysdate(), '', NULL, '学员档案菜单'),
+('学员档案', (SELECT menu_id FROM sys_menu WHERE menu_name = '学员管理'), 1, 'profile', 'gymnastics/profile/index', 1, 0, 'C', '0', '0', 'gymnastics:profile:list', 'user', 'admin', sysdate(), '', NULL, '学员档案菜单'),
+('学员查询', (SELECT menu_id FROM sys_menu WHERE menu_name = '学员档案'), 1, '', '', 1, 0, 'F', '0', '0', 'gymnastics:profile:query', '#', 'admin', sysdate(), '', NULL, ''),
+('学员新增', (SELECT menu_id FROM sys_menu WHERE menu_name = '学员档案'), 2, '', '', 1, 0, 'F', '0', '0', 'gymnastics:profile:add', '#', 'admin', sysdate(), '', NULL, ''),
+('学员修改', (SELECT menu_id FROM sys_menu WHERE menu_name = '学员档案'), 3, '', '', 1, 0, 'F', '0', '0', 'gymnastics:profile:edit', '#', 'admin', sysdate(), '', NULL, ''),
+('学员删除', (SELECT menu_id FROM sys_menu WHERE menu_name = '学员档案'), 4, '', '', 1, 0, 'F', '0', '0', 'gymnastics:profile:remove', '#', 'admin', sysdate(), '', NULL, '');
+```
+
+---
+
 ## Assumptions
 
 - 假设用户已安装微信客户端(微信版本8.0.33+)
 - 假设用户网络环境稳定(3G/4G/5G/Wi-Fi)
 - 假设小程序基础库版本≥3.11.0
-- 假设后端服务器正常运行
+- 假设Spring Boot服务器正常运行
 - 假设微信API可用(wx.login、wx.getPhoneNumber)
 - 假设用户同意微信隐私协议
+- 假设RuoYi-Vue-Pro脚手架已正确配置和部署
 
 ---
 
@@ -334,7 +685,7 @@
 ---
 
 **创建人**: [产品经理]
-**最后更新**: 2025-10-31
-**版本**: v1.1.0
+**最后更新**: 2025-11-17
+**版本**: v2.0.0
 **状态**: Draft
-**更新内容**: 整合最终需求 - 虚拟年龄系统功能(支持特殊情况学员的课程匹配)
+**更新内容**: 技术栈重构为RuoYi架构 (Spring Boot + MyBatis-Plus + Vue3)

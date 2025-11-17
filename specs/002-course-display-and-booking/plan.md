@@ -36,7 +36,7 @@
 │   │   ├── services/            # 业务逻辑层
 │   │   │   ├── course_service.py
 │   │   │   ├── booking_service.py
-│   │   │   ├── tag_matching_service.py
+│   │   │   ├── tag_matching_service.py      # 4维标签匹配服务
 │   │   │   └── waitlist_service.py
 │   │   ├── controllers/         # API控制器
 │   │   │   ├── course.py
@@ -85,6 +85,42 @@
 - **宪法 Principle 5**：纵向切片，独立交付预约功能
 
 ## Architecture Overview
+
+### 4维标签匹配服务架构
+
+#### 服务设计原则
+- **白名单匹配机制**：4个维度必须全部匹配，任一维度不匹配则排除
+- **统一匹配算法**：与私教课系统共享相同的匹配逻辑
+- **格式统一**：年龄范围使用VARCHAR格式，支持灵活配置
+
+#### 4维标签定义
+1. **等级维度 (level)**：学员等级 vs 课程等级范围
+2. **年龄维度 (age)**：学员年龄 vs 课程年龄范围
+3. **性别维度 (gender)**：学员性别 vs 课程性别要求
+4. **类型维度 (type)**：课程类型 vs 学员目标类型
+
+#### 统一格式规范
+```json
+{
+  "age_range_formats": ["4-6岁", "6-8岁", "8-12岁", "6+岁", "成人", "全年龄段"],
+  "level_range_formats": ["L1", "L2", "L3", "L1+", "L2+", "L1-L3"],
+  "gender_values": ["male", "female", "both"],
+  "course_type_values": ["interest", "professional", "trial"]
+}
+```
+
+#### 匹配算法核心逻辑
+```python
+# 白名单匹配：所有维度必须匹配
+def match_profile_to_course(profile_tags, course_tags):
+    dimensions = ['level', 'age', 'gender', 'type']
+
+    for dimension in dimensions:
+        if not match_dimension(profile_tags[dimension], course_tags[dimension]):
+            return 0.0  # 任一维度不匹配则返回0分
+
+    return 100.0  # 所有维度匹配返回100分
+```
 
 ### 系统架构图
 

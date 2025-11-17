@@ -1,40 +1,61 @@
-# 数据模型： 005-payment-integration
+# 数据模型：支付集成系统
 
-**功能分支**: `005-payment-integration`
+**功能**: 005-payment-integration
 **创建时间**: 2025-11-03
-**状态**: Draft
-**MVP**: 5
+**版本**: v2.0.0 RuoYi架构重构
+**重构日期**: 2025-11-17
+**技术栈**: RuoYi-Vue-Pro + MyBatis-Plus + Redis + 微信支付
 
-## 数据库架构设计
+## RuoYi-MyBatis-Plus 数据模型设计
 
-### 1. payment_orders Table
+### 概述
 
-Stores payment order information for trial class bookings.
+支付集成系统的数据模型采用RuoYi-Vue-Pro架构设计，基于MyBatis-Plus实现4表设计，实现体验课支付、座位预留、微信支付集成的完整业务流程。系统严格遵循固定价格200元、安全支付处理、成功付款后立即座位预留的要求。
+
+**RuoYi架构特性**：
+- **MyBatis-Plus集成**: 使用LambdaQueryWrapper进行支付查询优化
+- **Redis缓存**: Spring Cache + @Cacheable注解优化支付性能
+- **乐观锁机制**: @Version字段防止支付并发冲突
+- **审计功能**: BaseEntity提供创建时间、更新时间等审计字段
+- **数据权限**: 基于RuoYi的权限控制系统
+- **微信支付集成**: 微信支付Java SDK + RuoYi签名验证
+
+### 1. gym_payment_order 表
+
+基于RuoYi-Vue-Pro架构的支付订单表，存储体验课支付订单信息。
 
 ```sql
-CREATE TABLE payment_orders (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    order_id VARCHAR(64) UNIQUE NOT NULL COMMENT 'Unique order identifier',
-    user_id BIGINT NOT NULL COMMENT 'User who created the order',
-    course_schedule_id BIGINT NOT NULL COMMENT 'Course schedule being booked',
-    amount DECIMAL(10,2) NOT NULL DEFAULT 200.00 COMMENT 'Payment amount (fixed 200)',
-    currency VARCHAR(3) NOT NULL DEFAULT 'CNY' COMMENT 'Currency code',
-    status ENUM('pending', 'paid', 'failed', 'cancelled', 'expired') NOT NULL DEFAULT 'pending',
-    payment_method VARCHAR(32) NOT NULL DEFAULT 'wechat_pay' COMMENT 'Payment method',
-    description TEXT COMMENT 'Order description',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL COMMENT 'Order expiration time',
-
-    INDEX idx_user_id (user_id),
-    INDEX idx_course_schedule_id (course_schedule_id),
-    INDEX idx_status (status),
-    INDEX idx_created_at (created_at),
-    INDEX idx_order_id (order_id),
-
-    FOREIGN KEY (user_id) REFERENCES users(id),
-    FOREIGN KEY (course_schedule_id) REFERENCES course_schedules(id)
-);
+CREATE TABLE `gym_payment_order` (
+  `payment_id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '支付订单ID',
+  `order_no` VARCHAR(64) NOT NULL COMMENT '订单号',
+  `user_id` BIGINT(20) NOT NULL COMMENT '用户ID',
+  `profile_id` BIGINT(20) NOT NULL COMMENT '学员档案ID',
+  `course_schedule_id` BIGINT(20) NOT NULL COMMENT '课程安排ID',
+  `amount` DECIMAL(10,2) NOT NULL DEFAULT 200.00 COMMENT '支付金额(固定200)',
+  `currency` VARCHAR(10) NOT NULL DEFAULT 'CNY' COMMENT '货币类型',
+  `status` CHAR(1) NOT NULL DEFAULT '0' COMMENT '状态(0待支付 1已支付 2失败 3已取消 4已过期)',
+  `payment_method` VARCHAR(32) NOT NULL DEFAULT 'wechat_pay' COMMENT '支付方式',
+  `wechat_order_id` VARCHAR(64) DEFAULT NULL COMMENT '微信订单号',
+  `prepay_id` VARCHAR(64) DEFAULT NULL COMMENT '预支付交易会话标识',
+  `paid_time` DATETIME DEFAULT NULL COMMENT '支付完成时间',
+  `expires_time` DATETIME NOT NULL COMMENT '订单过期时间',
+  `version` INT(11) DEFAULT 0 COMMENT '乐观锁版本号',
+  `del_flag` CHAR(1) DEFAULT '0' COMMENT '删除标志(0代表存在 2代表删除)',
+  `create_by` VARCHAR(64) DEFAULT '' COMMENT '创建者',
+  `create_time` DATETIME DEFAULT NULL COMMENT '创建时间',
+  `update_by` VARCHAR(64) DEFAULT '' COMMENT '更新者',
+  `update_time` DATETIME DEFAULT NULL COMMENT '更新时间',
+  `remark` VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (`payment_id`),
+  UNIQUE KEY `uk_order_no` (`order_no`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_profile_id` (`profile_id`),
+  KEY `idx_course_schedule_id` (`course_schedule_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_create_time` (`create_time`),
+  KEY `idx_expires_time` (`expires_time`),
+  KEY `idx_wechat_order_id` (`wechat_order_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='支付订单表';
 ```
 
 **Fields Description**:
@@ -46,43 +67,43 @@ CREATE TABLE payment_orders (
 - `status`: Current payment order status
 - `expires_at`: 30-minute expiration for payment completion
 
-### 2. payment_transactions Table
+### 2. gym_payment_transaction 表
 
-Tracks individual payment transactions with WeChat Pay.
+基于RuoYi-Vue-Pro架构的支付交易表，跟踪微信支付交易信息。
 
 ```sql
-CREATE TABLE payment_transactions (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    transaction_id VARCHAR(64) UNIQUE NOT NULL COMMENT 'WeChat transaction ID',
-    order_id BIGINT NOT NULL COMMENT 'Reference to payment order',
-    out_trade_no VARCHAR(64) NOT NULL COMMENT 'Merchant order number',
-    trade_type VARCHAR(32) NOT NULL DEFAULT 'NATIVE' COMMENT 'WeChat trade type',
-    trade_state VARCHAR(32) NOT NULL COMMENT 'WeChat trade state',
-    bank_type VARCHAR(32) COMMENT 'Bank type',
-    settlement_total_fee DECIMAL(10,2) COMMENT 'Settlement amount',
-    cash_fee DECIMAL(10,2) COMMENT 'Cash fee',
-    transaction_fee DECIMAL(10,2) COMMENT 'Transaction fee',
-    total_fee DECIMAL(10,2) NOT NULL COMMENT 'Total fee in cents',
-    fee_type VARCHAR(8) DEFAULT 'CNY' COMMENT 'Fee currency',
-    time_end VARCHAR(14) COMMENT 'Transaction completion time',
-    is_subscribe VARCHAR(1) DEFAULT 'N' COMMENT 'User subscription status',
-    return_code VARCHAR(32) NOT NULL COMMENT 'WeChat return code',
-    return_msg VARCHAR(128) COMMENT 'WeChat return message',
-    result_code VARCHAR(32) COMMENT 'WeChat result code',
-    err_code VARCHAR(32) COMMENT 'Error code',
-    err_code_des VARCHAR(128) COMMENT 'Error description',
-    openid VARCHAR(128) COMMENT 'User openid',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
-    INDEX idx_order_id (order_id),
-    INDEX idx_transaction_id (transaction_id),
-    INDEX idx_out_trade_no (out_trade_no),
-    INDEX idx_trade_state (trade_state),
-    INDEX idx_created_at (created_at),
-
-    FOREIGN KEY (order_id) REFERENCES payment_orders(id)
-);
+CREATE TABLE `gym_payment_transaction` (
+  `transaction_id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '交易ID',
+  `payment_id` BIGINT(20) NOT NULL COMMENT '支付订单ID',
+  `wechat_transaction_id` VARCHAR(64) DEFAULT NULL COMMENT '微信交易号',
+  `out_trade_no` VARCHAR(64) NOT NULL COMMENT '商户订单号',
+  `trade_type` VARCHAR(32) NOT NULL DEFAULT 'NATIVE' COMMENT '交易类型',
+  `trade_state` VARCHAR(32) NOT NULL COMMENT '交易状态',
+  `bank_type` VARCHAR(32) DEFAULT NULL COMMENT '付款银行',
+  `settlement_total_fee` DECIMAL(10,2) DEFAULT NULL COMMENT '应结订单金额',
+  `cash_fee` DECIMAL(10,2) DEFAULT NULL COMMENT '现金支付金额',
+  `transaction_fee` DECIMAL(10,2) DEFAULT NULL COMMENT '微信支付手续费',
+  `total_fee` BIGINT(20) NOT NULL COMMENT '订单总金额(分)',
+  `fee_type` VARCHAR(10) DEFAULT 'CNY' COMMENT '货币类型',
+  `time_end` VARCHAR(14) DEFAULT NULL COMMENT '支付完成时间',
+  `is_subscribe` CHAR(1) DEFAULT 'N' COMMENT '是否关注公众账号',
+  `openid` VARCHAR(128) DEFAULT NULL COMMENT '用户标识',
+  `version` INT(11) DEFAULT 0 COMMENT '乐观锁版本号',
+  `del_flag` CHAR(1) DEFAULT '0' COMMENT '删除标志(0代表存在 2代表删除)',
+  `create_by` VARCHAR(64) DEFAULT '' COMMENT '创建者',
+  `create_time` DATETIME DEFAULT NULL COMMENT '创建时间',
+  `update_by` VARCHAR(64) DEFAULT '' COMMENT '更新者',
+  `update_time` DATETIME DEFAULT NULL COMMENT '更新时间',
+  `remark` VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (`transaction_id`),
+  UNIQUE KEY `uk_wechat_transaction_id` (`wechat_transaction_id`),
+  KEY `idx_payment_id` (`payment_id`),
+  KEY `idx_out_trade_no` (`out_trade_no`),
+  KEY `idx_trade_state` (`trade_state`),
+  KEY `idx_create_time` (`create_time`),
+  KEY `idx_openid` (`openid`),
+  CONSTRAINT `fk_payment_transaction_payment` FOREIGN KEY (`payment_id`) REFERENCES `gym_payment_order` (`payment_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='支付交易表';
 ```
 
 **Fields Description**:
@@ -92,35 +113,37 @@ CREATE TABLE payment_transactions (
 - `trade_state`: Current WeChat transaction status
 - `total_fee`: Amount in cents (as required by WeChat Pay API)
 
-### 3. seat_reservations Table
+### 3. gym_seat_reservation 表
 
-Manages temporary seat reservations during payment process.
+基于RuoYi-Vue-Pro架构的座位预留表，管理支付过程中的临时座位预留。
 
 ```sql
-CREATE TABLE seat_reservations (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    reservation_id VARCHAR(64) UNIQUE NOT NULL COMMENT 'Unique reservation identifier',
-    order_id BIGINT NOT NULL COMMENT 'Associated payment order',
-    course_schedule_id BIGINT NOT NULL COMMENT 'Course schedule reference',
-    user_id BIGINT NOT NULL COMMENT 'User making reservation',
-    seat_count INT NOT NULL DEFAULT 1 COMMENT 'Number of seats reserved',
-    status ENUM('temporary', 'confirmed', 'cancelled', 'expired') NOT NULL DEFAULT 'temporary',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL COMMENT 'Reservation expiration (15 minutes)',
-    confirmed_at TIMESTAMP NULL COMMENT 'When reservation was confirmed',
-
-    INDEX idx_reservation_id (reservation_id),
-    INDEX idx_order_id (order_id),
-    INDEX idx_course_schedule_id (course_schedule_id),
-    INDEX idx_user_id (user_id),
-    INDEX idx_status (status),
-    INDEX idx_expires_at (expires_at),
-
-    FOREIGN KEY (order_id) REFERENCES payment_orders(id),
-    FOREIGN KEY (course_schedule_id) REFERENCES course_schedules(id),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
+CREATE TABLE `gym_seat_reservation` (
+  `reservation_id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '预留ID',
+  `payment_id` BIGINT(20) NOT NULL COMMENT '支付订单ID',
+  `course_schedule_id` BIGINT(20) NOT NULL COMMENT '课程安排ID',
+  `user_id` BIGINT(20) NOT NULL COMMENT '用户ID',
+  `seat_count` INT(11) NOT NULL DEFAULT 1 COMMENT '预留座位数',
+  `status` CHAR(1) NOT NULL DEFAULT '0' COMMENT '状态(0临时 1已确认 2已取消 3已过期)',
+  `expires_time` DATETIME NOT NULL COMMENT '预留过期时间(15分钟)',
+  `confirmed_time` DATETIME DEFAULT NULL COMMENT '确认时间',
+  `version` INT(11) DEFAULT 0 COMMENT '乐观锁版本号',
+  `del_flag` CHAR(1) DEFAULT '0' COMMENT '删除标志(0代表存在 2代表删除)',
+  `create_by` VARCHAR(64) DEFAULT '' COMMENT '创建者',
+  `create_time` DATETIME DEFAULT NULL COMMENT '创建时间',
+  `update_by` VARCHAR(64) DEFAULT '' COMMENT '更新者',
+  `update_time` DATETIME DEFAULT NULL COMMENT '更新时间',
+  `remark` VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (`reservation_id`),
+  UNIQUE KEY `uk_payment_id` (`payment_id`),
+  KEY `idx_course_schedule_id` (`course_schedule_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_expires_time` (`expires_time`),
+  KEY `idx_create_time` (`create_time`),
+  CONSTRAINT `fk_seat_reservation_payment` FOREIGN KEY (`payment_id`) REFERENCES `gym_payment_order` (`payment_id`),
+  CONSTRAINT `fk_seat_reservation_schedule` FOREIGN KEY (`course_schedule_id`) REFERENCES `gym_course_schedule` (`schedule_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='座位预留表';
 ```
 
 **Fields Description**:
@@ -129,37 +152,35 @@ CREATE TABLE seat_reservations (
 - `status`: Reservation lifecycle status
 - `expires_at`: 15-minute expiration for temporary reservations
 
-### 4. payment_audit_log Table
+### 4. gym_payment_audit_log 表
 
-Audit trail for all payment-related activities.
+基于RuoYi-Vue-Pro架构的支付审计日志表，记录所有支付相关活动的审计轨迹。
 
 ```sql
-CREATE TABLE payment_audit_log (
-    id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    order_id BIGINT COMMENT 'Related payment order',
-    transaction_id BIGINT COMMENT 'Related payment transaction',
-    user_id BIGINT COMMENT 'User performing action',
-    action_type VARCHAR(64) NOT NULL COMMENT 'Type of action performed',
-    action_detail TEXT COMMENT 'Details of the action',
-    old_status VARCHAR(32) COMMENT 'Previous status',
-    new_status VARCHAR(32) COMMENT 'New status after action',
-    ip_address VARCHAR(45) COMMENT 'IP address of request',
-    user_agent TEXT COMMENT 'User agent string',
-    request_data JSON COMMENT 'Request data snapshot',
-    response_data JSON COMMENT 'Response data snapshot',
-    error_message TEXT COMMENT 'Error message if any',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    INDEX idx_order_id (order_id),
-    INDEX idx_transaction_id (transaction_id),
-    INDEX idx_user_id (user_id),
-    INDEX idx_action_type (action_type),
-    INDEX idx_created_at (created_at),
-
-    FOREIGN KEY (order_id) REFERENCES payment_orders(id),
-    FOREIGN KEY (transaction_id) REFERENCES payment_transactions(id),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
+CREATE TABLE `gym_payment_audit_log` (
+  `audit_id` BIGINT(20) NOT NULL AUTO_INCREMENT COMMENT '审计ID',
+  `payment_id` BIGINT(20) DEFAULT NULL COMMENT '支付订单ID',
+  `transaction_id` BIGINT(20) DEFAULT NULL COMMENT '交易ID',
+  `user_id` BIGINT(20) DEFAULT NULL COMMENT '用户ID',
+  `action_type` VARCHAR(64) NOT NULL COMMENT '操作类型',
+  `action_detail` TEXT DEFAULT NULL COMMENT '操作详情',
+  `old_status` VARCHAR(32) DEFAULT NULL COMMENT '原状态',
+  `new_status` VARCHAR(32) DEFAULT NULL COMMENT '新状态',
+  `ip_address` VARCHAR(128) DEFAULT NULL COMMENT 'IP地址',
+  `user_agent` VARCHAR(500) DEFAULT NULL COMMENT '用户代理',
+  `request_data` TEXT DEFAULT NULL COMMENT '请求数据(JSON)',
+  `response_data` TEXT DEFAULT NULL COMMENT '响应数据(JSON)',
+  `error_message` TEXT DEFAULT NULL COMMENT '错误信息',
+  `create_time` DATETIME DEFAULT NULL COMMENT '创建时间',
+  PRIMARY KEY (`audit_id`),
+  KEY `idx_payment_id` (`payment_id`),
+  KEY `idx_transaction_id` (`transaction_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_action_type` (`action_type`),
+  KEY `idx_create_time` (`create_time`),
+  CONSTRAINT `fk_payment_audit_payment` FOREIGN KEY (`payment_id`) REFERENCES `gym_payment_order` (`payment_id`),
+  CONSTRAINT `fk_payment_audit_transaction` FOREIGN KEY (`transaction_id`) REFERENCES `gym_payment_transaction` (`transaction_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='支付审计日志表';
 ```
 
 **Fields Description**:

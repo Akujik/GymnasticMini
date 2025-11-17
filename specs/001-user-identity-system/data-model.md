@@ -3,7 +3,7 @@
 **Feature**: 001-user-identity-system
 **创建时间**: 2025-10-26
 **Version**: 1.1.0
-**Update**: 2025-10-31 - 添加virtual_age和has_purchased_trial字段支持最终需求功能
+**Update**: 2025-11-17 - 优化虚拟年龄设计，改为virtual_age_offset偏移量模式，简化家长设置流程
 
 ## Database Schema
 
@@ -61,18 +61,19 @@
 |--------|----------|------|--------|------|------|
 | id | INT | PK, AUTO_INCREMENT | - | 账号ID | PRIMARY |
 | openid | VARCHAR(64) | UNIQUE, NOT NULL | - | 微信OpenID | INDEX |
-| profile_id | INT | NULL | NULL | 关联的主档案ID | INDEX |
+| profile_id | INT | NOT NULL | - | 关联的主档案ID | INDEX |
 | created_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 创建时间 | INDEX |
 | updated_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP ON UPDATE | 更新时间 | INDEX |
 
 **外键约束**：
-- `profile_id` → `profile.id` (ON DELETE SET NULL)
+- `profile_id` → `profile.id` (ON DELETE CASCADE)
 
 **业务规则**：
 - `openid` 是微信用户的唯一标识，直接存储（信任微信安全机制）
-- `profile_id` 可以为空，表示该账号还未创建主档案
+- `profile_id` 为必填字段，确保每个账号都有主档案
 - 一个 `openid` 只能对应一个账号记录
-- 如果删除主档案，`profile_id` 自动设为 NULL
+- 如果删除主档案，由于存在 CASCADE 约束，account 记录也会被删除
+- 新用户注册时必须先创建档案，再建立账号关联
 
 ### profile（档案表）
 
@@ -108,9 +109,8 @@
 - `level` 表示学员的课程等级，由运营在后台手动设置，影响课程推荐和价格计算
 - `development` 表示学员的发展标签，用于课程匹配和推荐
 - `privilege` 表示学员的权益标签，影响课程价格和优惠政策
-- `virtual_age` 用于特殊情况学员的课程匹配，由运营人员或系统自动设置
-- `virtual_age_reason` 记录虚拟年龄设置的原因，便于运营分析和追踪
-- `virtual_age_last_updated` 记录虚拟年龄最后更新时间，支持系统自动增长功能
+- `virtual_age_offset` 虚拟年龄偏移量，由家长直接设定，正数增加年龄，负数减少年龄
+- `display_age` 显示年龄（计算字段）：实际年龄 + 虚拟年龄偏移量，用于课程匹配
 - `registration_date` 记录学员首次报课日期，用于判断老用户/新用户（基准日期：2024-11-11）
 - `customer_type` 客户类型，基于privilege和registration_date自动计算：old_user(11月11日前报课)/new_user(11月11日后报课)/friend(亲友权益)
 - `status` 支持软删除：0=已删除，1=正常
@@ -148,29 +148,27 @@
 - `can_book` 控制档案是否可用于预约（如暂时禁用）
 - 删除账号或档案时，关联关系自动删除
 
-### virtual_age_log（虚拟年龄变更记录表）
+### virtual_age_offset_log（虚拟年龄偏移量变更记录表）
 
-**描述**：存储虚拟年龄的历史变更记录，用于运营分析和审计追踪
+**描述**：存储虚拟年龄偏移量的历史变更记录，用于运营分析和审计追踪
 
-**用途**：记录每次虚拟年龄设置的变更，支持历史追溯和异常分析
+**用途**：记录每次虚拟年龄偏移量的设置变更，支持历史追溯和异常分析
 
 | 字段名 | 数据类型 | 约束 | 默认值 | 描述 | 索引 |
 |--------|----------|------|--------|------|------|
 | id | INT | PK, AUTO_INCREMENT | - | 记录ID | PRIMARY |
 | profile_id | INT | NOT NULL | - | 档案ID | INDEX |
-| old_virtual_age | DECIMAL(3,1) | NULL | NULL | 原虚拟年龄 | - |
-| new_virtual_age | DECIMAL(3,1) | NULL | NULL | 新虚拟年龄 | - |
+| old_offset | INT | NULL | NULL | 原偏移量 | - |
+| new_offset | INT | NULL | NULL | 新偏移量 | - |
 | change_reason | TEXT | NULL | NULL | 变更原因 | - |
-| admin_id | INT | NULL | NULL | 操作管理员ID | INDEX |
 | created_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 变更时间 | INDEX |
 
 **外键约束**：
 - `profile_id` → `profile.id` (ON DELETE CASCADE)
-- `admin_id` → `admin_user.id` (ON DELETE SET NULL) （如果存在管理员表）
 
 **业务规则**：
-- 每次虚拟年龄设置/更新都会生成记录
-- 支持记录管理员手动调整的情况
+- 每次虚拟年龄偏移量设置/更新都会生成记录
+- 偏移量范围：-5到+5岁
 - 变更原因可选，但建议填写以便后续分析
 - 按变更时间倒序显示历史记录
 
@@ -429,16 +427,16 @@
 }
 ```
 
-#### PUT /api/v1/profiles/{id}/virtual-age
+#### PUT /api/v1/profiles/{id}/virtual-age-offset
 **方法**: PUT
-**路径**: /api/v1/profiles/{id}/virtual-age
-**描述**: 设置或更新档案的虚拟年龄
+**路径**: /api/v1/profiles/{id}/virtual-age-offset
+**描述**: 设置或更新档案的虚拟年龄偏移量
 
 **Request**:
 ```json
 {
-  "virtual_age": 6.5,
-  "change_reason": "身高较高，建议匹配6岁课程"
+  "virtual_age_offset": 1,
+  "change_reason": "孩子发育较快，建议按大1岁匹配课程"
 }
 ```
 
@@ -446,40 +444,41 @@
 ```json
 {
   "code": 200,
-  "message": "虚拟年龄设置成功",
+  "message": "虚拟年龄偏移量设置成功",
   "data": {
     "profile_id": 1,
     "actual_age": 5.8,
-    "virtual_age": 6.5,
-    "age_difference": 0.7,
-    "updated_at": "2025-10-31T10:30:00Z"
+    "virtual_age_offset": 1,
+    "display_age": 6.8,
+    "updated_at": "2025-11-17T10:30:00Z"
   }
 }
 ```
 
-#### DELETE /api/v1/profiles/{id}/virtual-age
+#### DELETE /api/v1/profiles/{id}/virtual-age-offset
 **方法**: DELETE
-**路径**: /api/v1/profiles/{id}/virtual-age
-**描述**: 清空档案的虚拟年龄设置
+**路径**: /api/v1/profiles/{id}/virtual-age-offset
+**描述**: 清空档案的虚拟年龄偏移量设置
 
 **Response**:
 ```json
 {
   "code": 200,
-  "message": "虚拟年龄已清空",
+  "message": "虚拟年龄偏移量已清空",
   "data": {
     "profile_id": 1,
     "actual_age": 5.8,
-    "virtual_age": null,
-    "updated_at": "2025-10-31T10:35:00Z"
+    "virtual_age_offset": 0,
+    "display_age": 5.8,
+    "updated_at": "2025-11-17T10:35:00Z"
   }
 }
 ```
 
-#### GET /api/v1/profiles/{id}/virtual-age/log
+#### GET /api/v1/profiles/{id}/virtual-age-offset/log
 **方法**: GET
-**路径**: /api/v1/profiles/{id}/virtual-age/log
-**描述**: 获取虚拟年龄变更记录
+**路径**: /api/v1/profiles/{id}/virtual-age-offset/log
+**描述**: 获取虚拟年龄偏移量变更记录
 
 **Request Parameters**:
 - `page`: 页码（默认1）
@@ -494,11 +493,10 @@
     "logs": [
       {
         "id": 1,
-        "old_virtual_age": null,
-        "new_virtual_age": 6.5,
-        "change_reason": "身高较高，建议匹配6岁课程",
-        "admin_id": null,
-        "created_at": "2025-10-31T10:30:00Z"
+        "old_offset": 0,
+        "new_offset": 1,
+        "change_reason": "孩子发育较快，建议按大1岁匹配课程",
+        "created_at": "2025-11-17T10:30:00Z"
       }
     ],
     "total": 1,
@@ -522,10 +520,10 @@
 - **phone**: 可选，手机号格式验证
 - **sports_background**: 可选，最多500字符
 
-#### Virtual Age Validation
-- **virtual_age**: 可选，DECIMAL(3,1)格式，范围2.0-18.0岁
-- **virtual_age_reason**: 设置虚拟年龄时建议填写变更原因
-- **age_difference**: 虚拟年龄与实际年龄差异建议不超过±3岁
+#### Virtual Age Offset Validation
+- **virtual_age_offset**: 可选，INT格式，范围-5到+5岁
+- **change_reason**: 设置虚拟年龄偏移量时建议填写变更原因
+- **display_age**: 显示年龄 = 实际年龄 + 虚拟年龄偏移量
 
 #### Authentication Validation
 - **code**: 必填，微信授权code格式
@@ -549,8 +547,9 @@
 - 软删除档案不影响历史预约记录
 - 年龄实时计算，不存储年龄字段
 - OpenID全局唯一，防止重复注册
-- 虚拟年龄变更必须记录到virtual_age_log表
-- 虚拟年龄设置不影响实际年龄的计算和存储
+- 虚拟年龄偏移量变更必须记录到virtual_age_offset_log表
+- 虚拟年龄偏移量设置不影响实际年龄的计算和存储
+- 显示年龄仅用于课程匹配，不在数据库中物理存储
 
 ## Migration Strategy
 
@@ -581,9 +580,7 @@ CREATE TABLE `profile` (
   `level` ENUM('L1', 'L2', 'L3', 'L4', 'L5', 'L6') DEFAULT 'L1' COMMENT '课程等级（由运营在后台手动设置）',
   `development` ENUM('interest', 'professional', 'competition', 'long_term') DEFAULT NULL COMMENT '发展标签：兴趣班/专业班/竞赛班/长训班',
   `privilege` ENUM('old_user', 'new_user', 'friend_discount') DEFAULT 'new_user' COMMENT '权益标签：老用户/新用户/亲友权益',
-  `virtual_age` DECIMAL(3,1) NULL COMMENT '虚拟年龄（用于特殊情况的课程匹配）',
-  `virtual_age_reason` TEXT NULL COMMENT '虚拟年龄设置原因',
-  `virtual_age_last_updated` TIMESTAMP NULL COMMENT '虚拟年龄最后更新时间',
+  `virtual_age_offset` INT DEFAULT 0 COMMENT '虚拟年龄偏移量（正数增加，负数减少，由家长设定）',
   `status` TINYINT DEFAULT 1 COMMENT '状态：1=正常,0=已删除（软删除）',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -603,13 +600,14 @@ CREATE TABLE `profile` (
 CREATE TABLE `account` (
   `id` INT PRIMARY KEY AUTO_INCREMENT COMMENT '账号ID',
   `openid` VARCHAR(64) UNIQUE NOT NULL COMMENT '微信OpenID',
-  `profile_id` INT DEFAULT NULL COMMENT '关联的主档案ID（该微信属于谁）',
+  `profile_id` INT NOT NULL COMMENT '关联的主档案ID（该微信属于谁）',
   `has_purchased_trial` BOOLEAN DEFAULT FALSE COMMENT '是否已购买过体验课',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
   INDEX `idx_openid` (`openid`),
-  FOREIGN KEY (`profile_id`) REFERENCES `profile`(`id`) ON DELETE SET NULL
+  INDEX `idx_profile_id` (`profile_id`),
+  FOREIGN KEY (`profile_id`) REFERENCES `profile`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='账号表（微信登录账号）';
 ```
 
@@ -631,21 +629,20 @@ CREATE TABLE `profile_relation` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='档案关联表（谁能管理谁）';
 ```
 
-#### 创建 virtual_age_log 表
+#### 创建 virtual_age_offset_log 表
 ```sql
-CREATE TABLE `virtual_age_log` (
+CREATE TABLE `virtual_age_offset_log` (
   `id` INT PRIMARY KEY AUTO_INCREMENT COMMENT '记录ID',
   `profile_id` INT NOT NULL COMMENT '档案ID',
-  `old_virtual_age` DECIMAL(3,1) NULL COMMENT '原虚拟年龄',
-  `new_virtual_age` DECIMAL(3,1) NULL COMMENT '新虚拟年龄',
+  `old_offset` INT NULL COMMENT '原偏移量',
+  `new_offset` INT NULL COMMENT '新偏移量',
   `change_reason` TEXT NULL COMMENT '变更原因',
-  `admin_id` INT NULL COMMENT '操作管理员ID（运营人员调整时使用）',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '变更时间',
 
   FOREIGN KEY (`profile_id`) REFERENCES `profile`(`id`) ON DELETE CASCADE,
   INDEX `idx_profile` (`profile_id`),
   INDEX `idx_created_at` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='虚拟年龄变更记录表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='虚拟年龄偏移量变更记录表';
 ```
 
 #### 初始化数据
@@ -665,7 +662,7 @@ ALTER TABLE `profile_relation` DROP FOREIGN KEY `profile_relation_ibfk_2`;
 ALTER TABLE `account` DROP FOREIGN KEY `account_ibfk_1`;
 
 -- 删除表
-DROP TABLE IF EXISTS `virtual_age_log`;
+DROP TABLE IF EXISTS `virtual_age_offset_log`;
 DROP TABLE IF EXISTS `profile_relation`;
 DROP TABLE IF EXISTS `account`;
 DROP TABLE IF EXISTS `profile`;

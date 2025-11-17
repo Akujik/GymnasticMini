@@ -1,841 +1,871 @@
-# 数据模型： Waitlist and Makeup Class System
+# 数据模型：003-waitlist-and-makeup (RuoYi架构版)
 
-**Feature**: 003-waitlist-and-makeup
+**功能分支**: `003-waitlist-and-makeup`
 **创建时间**: 2025-10-31
-**Version**: 1.0.0
-
-## Database Schema
-
-### Overview
-
-候补和补课系统的数据模型采用六表设计，实现候补队列管理、6.5小时截止时限通知、自动顺位机制、补课预约和课时补偿的完整业务流程。
-
-### Entity Relationship Diagram
-
-```
-┌─────────────────┐         ┌─────────────────┐
-│     waitlist    │         │ waitlist_notif  │
-├─────────────────┤         ├─────────────────┤
-│ id (PK)         │◄────────┤ waitlist_id (FK)│
-│ profile_id (FK) │         │ id (PK)         │
-│ course_sched_id │         │ notification_type│
-│ position        │         │ round_number    │
-│ status          │         │ sent_at         │
-│ joined_at       │         │ deadline_at     │
-└─────────────────┘         │ response_deadline│
-         │                   │ status          │
-         │                   └─────────────────┘
-         │                            │
-         │                            ▼
-         │                   ┌─────────────────┐
-         │                   │ waitlist_flow   │
-         │                   ├─────────────────┤
-         │                   │ id (PK)         │
-         │                   │ notification_id │
-         │                   │ start_time      │
-         │                   │ complete_time   │
-         │                   │ expire_reason   │
-         │                   └─────────────────┘
-         ▼
-┌─────────────────┐         ┌─────────────────┐
-│  makeup_booking │         │ class_credit_   │
-│                 │         │ compensation    │
-├─────────────────┤         ├─────────────────┤
-│ id (PK)         │         │ id (PK)         │
-│ original_book_id│         │ profile_id (FK) │
-│ profile_id (FK) │         │ total_minutes   │
-│ course_sched_id │         │ used_minutes    │
-│ scheduled_at    │         │ expire_at       │
-│ status          │         │ status          │
-│ duration_diff   │         └─────────────────┘
-└─────────────────┘                  │
-         │                          ▼
-         │                  ┌─────────────────┐
-         │                  │ compensation_   │
-         │                  │ usage           │
-         │                  ├─────────────────┤
-         │                  │ id (PK)         │
-         ▼                  │ compensation_id │
-┌─────────────────┐         │ booking_id (FK) │
-│ profile         │         │ minutes_used    │
-│                 │         │ usage_type      │
-├─────────────────┤         └─────────────────┘
-│ id (PK)         │
-│ name            │
-│ level           │
-│ status          │
-└─────────────────┘
-```
-
-## Table Definitions
-
-### waitlist（候补表）
-
-**描述**：存储课程候补队列信息
-
-**用途**：管理候补排队、位置计算、自动顺位
-
-| 字段名 | 数据类型 | 约束 | 默认值 | 描述 | 索引 |
-|--------|----------|------|--------|------|------|
-| id | INT | PK, AUTO_INCREMENT | - | 候补ID | PRIMARY |
-| profile_id | INT | NOT NULL | - | 档案ID | INDEX |
-| course_schedule_id | INT | NOT NULL | - | 课程安排ID | INDEX |
-| position | INT | NOT NULL | - | 候补位置 | INDEX |
-| status | ENUM | NOT NULL | 'active' | 状态：active/confirmed/expired/cancelled | INDEX |
-| joined_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 加入时间 | INDEX |
-| confirmed_at | TIMESTAMP | NULL | NULL | 确认时间 | INDEX |
-| expired_at | TIMESTAMP | NULL | NULL | 过期时间 | INDEX |
-| queue_position_updated_at | TIMESTAMP | NULL | NULL | 排位更新时间 | INDEX |
-
-**外键约束**：
-- `profile_id` → `profile.id` (ON DELETE CASCADE)
-- `course_schedule_id` → `course_schedule.id` (ON DELETE CASCADE)
-
-**唯一约束**：
-- `uk_profile_course` (`profile_id`, `course_schedule_id`)
-
-**业务规则**：
-- 一个档案只能预约一个课程的候补
-- 候补位置实时计算，不存储
-- 状态流转：active → confirmed/expired/cancelled
-- 过期自动处理，释放位置给下一个候补
-- `queue_position_updated_at` 记录排位更新时间，用于排位变化跟踪
-
-### waitlist_notification（候补通知表）
-
-**描述**：存储候补通知发送和响应信息
-
-**用途**：6.5小时截止时限通知、响应跟踪
-
-| 字段名 | 数据类型 | 约束 | 默认值 | 描述 | 索引 |
-|--------|----------|------|--------|------|------|
-| id | INT | PK, AUTO_INCREMENT | - | 通知ID | PRIMARY |
-| waitlist_id | INT | NOT NULL | - | 候补ID | INDEX |
-| notification_type | ENUM | NOT NULL | 'available' | 通知类型 | INDEX |
-| round_number | INT | NOT NULL | 1 | 轮次号 | INDEX |
-| sent_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 发送时间 | INDEX |
-| deadline_at | TIMESTAMP | NOT NULL | - | 截止时间 | INDEX |
-| response_deadline | TIMESTAMP | NOT NULL | - | 响应截止时间 | INDEX |
-| status | ENUM | NOT NULL | 'pending' | 状态：pending/responded/expired/failed | INDEX |
-| responded_at | TIMESTAMP | NULL | NULL | 响应时间 | INDEX |
-| response_action | ENUM | NULL | NULL | 响应动作：accept/decline | INDEX |
-| notification_data | JSON | NULL | NULL | 通知数据 | - |
-
-**外键约束**：
-- `waitlist_id` → `waitlist.id` (ON DELETE CASCADE)
-
-**业务规则**：
-- 6.5小时课程开始前发送通知
-- 30分钟决策缓冲期
-- 超时未响应自动顺位
-- 通知内容模板化管理
-
-### waitlist_flow（候补流程表）
-
-**描述**：存储候补流程处理记录
-
-**用途**：流程跟踪、异常分析、运营数据
-
-| 字段名 | 数据类型 | 约束 | 默认值 | 描述 | 索引 |
-|--------|----------|------|--------|------|------|
-| id | INT | PK, AUTO_INCREMENT | - | 流程ID | PRIMARY |
-| notification_id | INT | NOT NULL | - | 通知ID | INDEX |
-| start_time | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 开始时间 | INDEX |
-| complete_time | TIMESTAMP | NULL | NULL | 完成时间 | INDEX |
-| expire_reason | ENUM | NULL | NULL | 过期原因 | INDEX |
-| flow_data | JSON | NULL | NULL | 流程数据 | - |
-| admin_notes | TEXT | NULL | NULL | 管理员备注 | - |
-
-**外键约束**：
-- `notification_id` → `waitlist_notification.id` (ON DELETE CASCADE)
-
-**业务规则**：
-- 每个通知都生成流程记录
-- 记录完整处理时间线
-- 支持异常情况分析
-- 运营干预记录
-
-### makeup_booking（补课预约表）
-
-**描述**：存储补课预约信息
-
-**用途**：补课预约管理、时长差异处理
-
-| 字段名 | 数据类型 | 约束 | 默认值 | 描述 | 索引 |
-|--------|----------|------|--------|------|------|
-| id | INT | PK, AUTO_INCREMENT | - | 补课预约ID | PRIMARY |
-| original_booking_id | INT | NULL | NULL | 原预约ID | INDEX |
-| profile_id | INT | NOT NULL | - | 档案ID | INDEX |
-| course_schedule_id | INT | NOT NULL | - | 课程安排ID | INDEX |
-| scheduled_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 预约时间 | INDEX |
-| class_date | DATE | NOT NULL | - | 上课日期 | INDEX |
-| start_time | TIME | NOT NULL | - | 开始时间 | INDEX |
-| end_time | TIME | NOT NULL | - | 结束时间 | INDEX |
-| duration_minutes | INT | NOT NULL | - | 课程时长 | INDEX |
-| duration_difference | INT | NULL | NULL | 时长差异 | INDEX |
-| compensation_used | DECIMAL(5,2) | NULL | NULL | 使用补偿时长 | INDEX |
-| status | ENUM | NOT NULL | 'scheduled' | 状态 | INDEX |
-| cancellation_reason | TEXT | NULL | NULL | 取消原因 | - |
-| notes | TEXT | NULL | NULL | 备注 | - |
-
-**外键约束**：
-- `original_booking_id` → `booking.id` (ON DELETE SET NULL)
-- `profile_id` → `profile.id` (ON DELETE CASCADE)
-- `course_schedule_id` → `course_schedule.id` (ON DELETE CASCADE)
-
-**业务规则**：
-- 支持关联原预约记录
-- 自动计算时长差异
-- 支持使用课时补偿
-- 补课取消不影响原预约记录
-
-### class_credit_compensation（课时补偿表）
-
-**描述**：存储课时补偿信息
-
-**用途**：补偿余额管理、使用跟踪、过期处理
-
-| 字段名 | 数据类型 | 约束 | 默认值 | 描述 | 索引 |
-|--------|----------|------|--------|------|------|
-| id | INT | PK, AUTO_INCREMENT | - | 补偿ID | PRIMARY |
-| profile_id | INT | NOT NULL | - | 档案ID | INDEX |
-| source_type | ENUM | NOT NULL | 'course_cancellation' | 来源类型 | INDEX |
-| source_id | INT | NULL | NULL | 来源ID | INDEX |
-| total_minutes | DECIMAL(5,2) | NOT NULL | 0 | 总补偿时长 | INDEX |
-| used_minutes | DECIMAL(5,2) | NOT NULL | 0 | 已使用时长 | INDEX |
-| remaining_minutes | DECIMAL(5,2) | NOT NULL | 0 | 剩余时长 | INDEX |
-| expire_at | TIMESTAMP | NOT NULL | - | 过期时间 | INDEX |
-| status | ENUM | NOT NULL | 'active' | 状态：active/expired/used_up | INDEX |
-| created_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 创建时间 | INDEX |
-| notes | TEXT | NULL | NULL | 备注 | - |
-
-**外键约束**：
-- `profile_id` → `profile.id` (ON DELETE CASCADE)
-
-**业务规则**：
-- 补偿时长精确到0.5节课（30分钟）
-- 支持多种补偿来源
-- 自动过期处理
-- 剩余时长实时计算
-
-### compensation_usage（补偿使用记录表）
-
-**描述**：存储补偿使用详细记录
-
-**用途**：使用跟踪、明细查询、统计分析
-
-| 字段名 | 数据类型 | 约束 | 默认值 | 描述 | 索引 |
-|--------|----------|------|--------|------|------|
-| id | INT | PK, AUTO_INCREMENT | - | 使用记录ID | PRIMARY |
-| compensation_id | INT | NOT NULL | - | 补偿ID | INDEX |
-| booking_id | INT | NULL | NULL | 预约ID | INDEX |
-| makeup_booking_id | INT | NULL | NULL | 补课预约ID | INDEX |
-| minutes_used | DECIMAL(5,2) | NOT NULL | 0 | 使用时长 | INDEX |
-| usage_type | ENUM | NOT NULL | 'makeup_class' | 使用类型 | INDEX |
-| used_at | TIMESTAMP | NOT NULL | CURRENT_TIMESTAMP | 使用时间 | INDEX |
-| remaining_before | DECIMAL(5,2) | NOT NULL | 0 | 使用前余额 | INDEX |
-| remaining_after | DECIMAL(5,2) | NOT NULL | 0 | 使用后余额 | INDEX |
-| notes | TEXT | NULL | NULL | 备注 | - |
-
-**外键约束**：
-- `compensation_id` → `class_credit_compensation.id` (ON DELETE CASCADE)
-- `booking_id` → `booking.id` (ON DELETE SET NULL)
-- `makeup_booking_id` → `makeup_booking.id` (ON DELETE SET NULL)
-
-**业务规则**：
-- 每次使用都生成详细记录
-- 记录使用前后余额
-- 支持多种使用场景
-- 使用记录不可删除
-
-## API Contracts
-
-### Waitlist Management APIs
-
-#### POST /api/v1/waitlist/join
-**方法**: POST
-**路径**: /api/v1/waitlist/join
-**描述**: 加入课程候补
-
-**Request**:
-```json
-{
-  "course_schedule_id": 123,
-  "profile_id": 456
-}
-```
-
-**Response**:
-```json
-{
-  "code": 200,
-  "message": "加入候补成功",
-  "data": {
-    "waitlist_id": 789,
-    "position": 3,
-    "estimated_wait_time": "2-3天",
-    "joined_at": "2025-10-31T10:00:00Z"
-  }
-}
-```
-
-#### GET /api/v1/waitlist/my
-**方法**: GET
-**路径**: /api/v1/waitlist/my
-**描述**: 获取我的候补记录
-
-**Response**:
-```json
-{
-  "code": 200,
-  "message": "查询成功",
-  "data": {
-    "waitlists": [
-      {
-        "waitlist_id": 789,
-        "course": {
-          "course_name": "初级平衡木",
-          "schedule_date": "2025-11-05",
-          "start_time": "15:00"
-        },
-        "position": 3,
-        "status": "active",
-        "joined_at": "2025-10-31T10:00:00Z",
-        "estimated_wait_time": "2-3天"
-      }
-    ],
-    "total": 1
-  }
-}
-```
-
-#### DELETE /api/v1/waitlist/{id}
-**方法**: DELETE
-**路径**: /api/v1/waitlist/{id}
-**描述**: 取消候补
-
-**Response**:
-```json
-{
-  "code": 200,
-  "message": "已取消候补",
-  "data": {
-    "waitlist_id": 789,
-    "cancelled_at": "2025-10-31T14:00:00Z"
-  }
-}
-```
-
-### Notification APIs
-
-#### POST /api/v1/waitlist/{id}/respond
-**方法**: POST
-**路径**: /api/v1/waitlist/{id}/respond
-**描述**: 响应候补通知
-
-**Request**:
-```json
-{
-  "action": "accept",
-  "notification_id": 101
-}
-```
-
-**Response**:
-```json
-{
-  "code": 200,
-  "message": "响应成功",
-  "data": {
-    "waitlist_id": 789,
-    "booking_id": 202,
-    "booking_status": "confirmed",
-    "responded_at": "2025-10-31T15:30:00Z"
-  }
-}
-```
-
-### Makeup Class APIs
-
-#### GET /api/v1/makeup/available
-**方法**: GET
-**路径**: /api/v1/makeup/available
-**描述**: 获取可补课课程列表
-
-**Response**:
-```json
-{
-  "code": 200,
-  "message": "查询成功",
-  "data": {
-    "courses": [
-      {
-        "course_schedule_id": 123,
-        "course_name": "初级平衡木",
-        "schedule_date": "2025-11-05",
-        "start_time": "15:00",
-        "duration_minutes": 60,
-        "available_spots": 2,
-        "can_use_compensation": true,
-        "compensation_info": {
-          "available_minutes": 90,
-          "enough_for_class": true
-        }
-      }
-    ],
-    "total": 5
-  }
-}
-```
-
-#### POST /api/v1/makeup/book
-**方法**: POST
-**路径**: /api/v1/makeup/book
-**描述**: 预约补课
-
-**Request**:
-```json
-{
-  "course_schedule_id": 123,
-  "profile_id": 456,
-  "original_booking_id": 789,
-  "use_compensation": true,
-  "compensation_minutes": 60
-}
-```
-
-**Response**:
-```json
-{
-  "code": 200,
-  "message": "补课预约成功",
-  "data": {
-    "makeup_booking_id": 101,
-    "booking_number": "MK20251031001",
-    "class_date": "2025-11-05",
-    "start_time": "15:00",
-    "duration_minutes": 60,
-    "duration_difference": 0,
-    "compensation_used": 60.00,
-    "remaining_compensation": 30.00,
-    "status": "scheduled"
-  }
-}
-```
-
-### Compensation APIs
-
-#### GET /api/v1/compensation/balance
-**方法**: GET
-**路径**: /api/v1/compensation/balance
-**描述**: 获取课时补偿余额
-
-**Response**:
-```json
-{
-  "code": 200,
-  "message": "查询成功",
-  "data": {
-    "total_compensations": 3,
-    "total_minutes": 150.0,
-    "used_minutes": 60.0,
-    "remaining_minutes": 90.0,
-    "expiring_soon": [
-      {
-        "compensation_id": 5,
-        "remaining_minutes": 30.0,
-        "expire_at": "2025-11-15T23:59:59Z",
-        "days_until_expire": 15
-      }
-    ]
-  }
-}
-```
-
-## Data Validation
-
-### Input Validation
-
-#### Waitlist Join Validation
-- **course_schedule_id**: 必填，有效的课程安排ID
-- **profile_id**: 必填，有效的档案ID
-- **duplicate_check**: 检查是否已在候补队列中
-
-#### Notification Response Validation
-- **action**: 必填，只能是'accept'或'decline'
-- **notification_id**: 必填，有效的通知ID
-- **response_window**: 检查是否在30分钟响应窗口内
-
-#### Makeup Booking Validation
-- **course_schedule_id**: 必填，有效的课程安排ID
-- **time_conflict**: 检查时间冲突
-- **compensation_validation**: 检查补偿余额是否足够
-
-### Business Validation
-
-#### Waitlist Rules
-- 每个档案每个课程只能加入一次候补
-- 候补位置实时计算
-- 自动过期处理机制
-- 6.5小时通知规则
-
-#### Compensation Rules
-- 补偿时长最小单位：30分钟
-- 补偿有效期：30天
-- 过期自动清理
-- 使用优先级：即将过期优先
-
-#### Makeup Class Rules
-- 补课只能预约同级别或更低级别课程
-- 时长差异自动计算补偿
-- 补课取消不影响补偿余额
-
-## Migration Strategy
-
-### Version 1.0.0
-
-#### 创建候补相关表
-```sql
--- 创建 waitlist 表
-CREATE TABLE `waitlist` (
-  `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `profile_id` INT NOT NULL,
-  `course_schedule_id` INT NOT NULL,
-  `position` INT NOT NULL,
-  `status` ENUM('active', 'confirmed', 'expired', 'cancelled') NOT NULL DEFAULT 'active',
-  `joined_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `confirmed_at` TIMESTAMP NULL,
-  `expired_at` TIMESTAMP NULL,
-
-  FOREIGN KEY (`profile_id`) REFERENCES `profile`(`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`course_schedule_id`) REFERENCES `course_schedule`(`id`) ON DELETE CASCADE,
-  UNIQUE KEY `uk_profile_course` (`profile_id`, `course_schedule_id`),
-  INDEX `idx_profile_course` (`profile_id`, `course_schedule_id`),
-  INDEX `idx_status_position` (`status`, `position`),
-  INDEX `idx_joined_at` (`joined_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='候补表';
-
--- 创建 waitlist_notification 表
-CREATE TABLE `waitlist_notification` (
-  `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `waitlist_id` INT NOT NULL,
-  `notification_type` ENUM('available', 'reminder', 'expiry') NOT NULL DEFAULT 'available',
-  `round_number` INT NOT NULL DEFAULT 1,
-  `sent_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `deadline_at` TIMESTAMP NOT NULL,
-  `response_deadline` TIMESTAMP NOT NULL,
-  `status` ENUM('pending', 'responded', 'expired', 'failed') NOT NULL DEFAULT 'pending',
-  `responded_at` TIMESTAMP NULL,
-  `response_action` ENUM('accept', 'decline') NULL,
-  `notification_data` JSON NULL,
-
-  FOREIGN KEY (`waitlist_id`) REFERENCES `waitlist`(`id`) ON DELETE CASCADE,
-  INDEX `idx_waitlist_status` (`waitlist_id`, `status`),
-  INDEX `idx_deadline_at` (`deadline_at`),
-  INDEX `idx_response_deadline` (`response_deadline`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='候补通知表';
-
--- 创建 waitlist_flow 表
-CREATE TABLE `waitlist_flow` (
-  `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `notification_id` INT NOT NULL,
-  `start_time` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `complete_time` TIMESTAMP NULL,
-  `expire_reason` ENUM('timeout', 'declined', 'cancelled', 'error') NULL,
-  `flow_data` JSON NULL,
-  `admin_notes` TEXT NULL,
-
-  FOREIGN KEY (`notification_id`) REFERENCES `waitlist_notification`(`id`) ON DELETE CASCADE,
-  INDEX `idx_notification_start` (`notification_id`, `start_time`),
-  INDEX `idx_complete_time` (`complete_time`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='候补流程表';
-```
-
-#### 创建补课相关表
-```sql
--- 创建 makeup_booking 表
-CREATE TABLE `makeup_booking` (
-  `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `original_booking_id` INT NULL,
-  `profile_id` INT NOT NULL,
-  `course_schedule_id` INT NOT NULL,
-  `scheduled_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `class_date` DATE NOT NULL,
-  `start_time` TIME NOT NULL,
-  `end_time` TIME NOT NULL,
-  `duration_minutes` INT NOT NULL,
-  `duration_difference` INT NULL,
-  `compensation_used` DECIMAL(5,2) NULL,
-  `status` ENUM('scheduled', 'completed', 'cancelled') NOT NULL DEFAULT 'scheduled',
-  `cancellation_reason` TEXT NULL,
-  `notes` TEXT NULL,
-
-  FOREIGN KEY (`original_booking_id`) REFERENCES `booking`(`id`) ON DELETE SET NULL,
-  FOREIGN KEY (`profile_id`) REFERENCES `profile`(`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`course_schedule_id`) REFERENCES `course_schedule`(`id`) ON DELETE CASCADE,
-  INDEX `idx_profile_date` (`profile_id`, `class_date`),
-  INDEX `idx_course_date` (`course_schedule_id`, `class_date`),
-  INDEX `idx_status_date` (`status`, `class_date`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='补课预约表';
-
--- 创建 class_credit_compensation 表
-CREATE TABLE `class_credit_compensation` (
-  `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `profile_id` INT NOT NULL,
-  `source_type` ENUM('course_cancellation', 'system_compensation', 'manual_adjustment') NOT NULL,
-  `source_id` INT NULL,
-  `total_minutes` DECIMAL(5,2) NOT NULL DEFAULT 0,
-  `used_minutes` DECIMAL(5,2) NOT NULL DEFAULT 0,
-  `remaining_minutes` DECIMAL(5,2) NOT NULL DEFAULT 0,
-  `expire_at` TIMESTAMP NOT NULL,
-  `status` ENUM('active', 'expired', 'used_up') NOT NULL DEFAULT 'active',
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `notes` TEXT NULL,
-
-  FOREIGN KEY (`profile_id`) REFERENCES `profile`(`id`) ON DELETE CASCADE,
-  INDEX `idx_profile_status` (`profile_id`, `status`),
-  INDEX `idx_expire_at` (`expire_at`),
-  INDEX `idx_source` (`source_type`, `source_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='课时补偿表';
-
--- 创建 compensation_usage 表
-CREATE TABLE `compensation_usage` (
-  `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `compensation_id` INT NOT NULL,
-  `booking_id` INT NULL,
-  `makeup_booking_id` INT NULL,
-  `minutes_used` DECIMAL(5,2) NOT NULL,
-  `usage_type` ENUM('makeup_class', 'class_extension', 'refund') NOT NULL DEFAULT 'makeup_class',
-  `used_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `remaining_before` DECIMAL(5,2) NOT NULL,
-  `remaining_after` DECIMAL(5,2) NOT NULL,
-  `notes` TEXT NULL,
-
-  FOREIGN KEY (`compensation_id`) REFERENCES `class_credit_compensation`(`id`) ON DELETE CASCADE,
-  FOREIGN KEY (`booking_id`) REFERENCES `booking`(`id`) ON DELETE SET NULL,
-  FOREIGN KEY (`makeup_booking_id`) REFERENCES `makeup_booking`(`id`) ON DELETE SET NULL,
-  INDEX `idx_compensation_usage` (`compensation_id`, `used_at`),
-  INDEX `idx_profile_usage` (`compensation_id`, `usage_type`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='补偿使用记录表';
-```
-
-### Rollback Plan
-
-#### 删除表（按依赖顺序倒序）
-```sql
--- 删除外键约束
-ALTER TABLE compensation_usage DROP FOREIGN KEY compensation_usage_ibfk_1;
-ALTER TABLE compensation_usage DROP FOREIGN KEY compensation_usage_ibfk_2;
-ALTER TABLE compensation_usage DROP FOREIGN KEY compensation_usage_ibfk_3;
-ALTER TABLE class_credit_compensation DROP FOREIGN KEY class_credit_compensation_ibfk_1;
-ALTER TABLE makeup_booking DROP FOREIGN KEY makeup_booking_ibfk_1;
-ALTER TABLE makeup_booking DROP FOREIGN KEY makeup_booking_ibfk_2;
-ALTER TABLE makeup_booking DROP FOREIGN KEY makeup_booking_ibfk_3;
-ALTER TABLE waitlist_flow DROP FOREIGN KEY waitlist_flow_ibfk_1;
-ALTER TABLE waitlist_notification DROP FOREIGN KEY waitlist_notification_ibfk_1;
-ALTER TABLE waitlist DROP FOREIGN KEY waitlist_ibfk_1;
-ALTER TABLE waitlist DROP FOREIGN KEY waitlist_ibfk_2;
-
--- 删除表
-DROP TABLE IF EXISTS compensation_usage;
-DROP TABLE IF EXISTS class_credit_compensation;
-DROP TABLE IF EXISTS makeup_booking;
-DROP TABLE IF EXISTS waitlist_flow;
-DROP TABLE IF EXISTS waitlist_notification;
-DROP TABLE IF EXISTS waitlist;
-```
-
-## Performance Optimization
-
-### Database Indexes
-
-#### 主要查询索引
-- `waitlist.profile_id, course_schedule_id` - 候补查询
-- `waitlist.status, position` - 队列管理
-- `waitlist_notification.deadline_at` - 通知处理
-- `makeup_booking.profile_id, class_date` - 补课查询
-- `class_credit_compensation.expire_at` - 过期处理
-
-#### 复合索引
-- `waitlist(profile_id, course_schedule_id)` - 唯一约束索引
-- `class_credit_compensation(profile_id, status)` - 余额查询
-- `compensation_usage(compensation_id, used_at)` - 使用记录
-
-### Query Optimization
-
-#### 常用查询优化
-```sql
--- 候补队列查询（使用索引）
-SELECT w.*, c.course_name, cs.schedule_date, cs.start_time
-FROM waitlist w
-JOIN course_schedule cs ON w.course_schedule_id = cs.id
-JOIN course c ON cs.course_id = c.id
-WHERE w.status = 'active'
-ORDER BY w.position ASC;
-
--- 6.5小时通知查询（使用索引）
-SELECT w.*, w_n.*
-FROM waitlist_notification w_n
-JOIN waitlist w ON w_n.waitlist_id = w.id
-WHERE w_n.status = 'pending'
-AND w_n.deadline_at <= NOW()
-AND w_n.response_deadline > NOW();
-```
-
-#### 分页查询
-```sql
--- 补课预约列表分页
-SELECT mb.*, c.course_name, cs.schedule_date, cs.start_time
-FROM makeup_booking mb
-JOIN course_schedule cs ON mb.course_schedule_id = cs.id
-JOIN course c ON cs.course_id = c.id
-WHERE mb.profile_id = ?
-ORDER BY mb.class_date DESC, mb.start_time DESC
-LIMIT 10 OFFSET 0;
-```
-
-### Caching Strategy
-
-#### Redis 缓存
-- 候补队列位置：缓存15分钟
-- 通知状态：缓存30分钟
-- 补偿余额：缓存1小时
-- 可补课课程：缓存30分钟
-
-#### 缓存键设计
-```
-waitlist:queue:{course_schedule_id}     # 候补队列
-waitlist:position:{waitlist_id}        # 候补位置
-notification:status:{notification_id}  # 通知状态
-compensation:balance:{profile_id}      # 补偿余额
-makeup:available:{date}                # 可补课课程
-```
-
-## Data Flow
-
-### 候补加入流程
-
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant M as 小程序
-    participant A as 后端API
-    participant D as 数据库
-    participant T as 异步任务
-
-    U->>M: 点击加入候补
-    M->>A: POST /waitlist/join
-    A->>A: 验证资格和重复检查
-    A->>D: 开启事务
-    A->>D: 计算并插入候补记录
-    A->>D: 更新其他候补位置
-    A->>D: 提交事务
-    A->>M: 返回候补位置
-    M->>U: 显示候补成功
-```
-
-### 6.5小时通知流程
-
-```mermaid
-sequenceDiagram
-    participant S as 定时任务
-    participant A as 后端API
-    participant D as 数据库
-    participant N as 通知服务
-    participant W as 微信通知
-
-    S->>A: 检查6.5小时窗口
-    A->>D: 查询待通知候补
-    A->>D: 创建通知记录
-    A->>N: 发送异步通知任务
-    N->>W: 发送微信通知
-    W->>A: 通知发送结果
-    A->>D: 更新通知状态
-```
-
-### 补课预约流程
-
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant M as 小程序
-    participant A as 后端API
-    participant D as 数据库
-    participant C as 补偿服务
-
-    U->>M: 选择补课课程
-    M->>A: POST /makeup/book
-    A->>A: 检查时间和冲突
-    A->>A: 计算时长差异
-    alt 使用补偿
-        A->>C: 检查补偿余额
-        C->>D: 锁定补偿时长
-    end
-    A->>D: 开启事务
-    A->>D: 创建补课预约
-    A->>D: 更新补偿使用
-    A->>D: 提交事务
-    A->>M: 返回预约成功
-    M->>U: 显示补课预约详情
-```
-
-## 安全考虑
-
-### Data Protection
-
-#### 敏感数据处理
-- 候补位置信息相对保护
-- 通知内容模板化，避免敏感信息泄露
-- 补偿余额信息加密存储
-
-#### 权限控制
-- 用户只能管理自己的候补和补课
-- 候补通知需要验证归属
-- 补偿使用需要权限验证
-
-### Input Sanitization
-
-#### SQL注入防护
-- 使用参数化查询
-- ORM框架自动防护
-- 输入长度限制
-
-#### 业务逻辑防护
-- 候补位置防篡改
-- 通知响应时间窗口验证
-- 补偿使用防重复扣减
-
-### Audit Logging
-
-#### 操作日志
-```sql
-CREATE TABLE `waitlist_audit_log` (
-  `id` INT PRIMARY KEY AUTO_INCREMENT,
-  `profile_id` INT NOT NULL,
-  `action` VARCHAR(50) NOT NULL,
-  `resource_type` VARCHAR(50) NOT NULL,
-  `resource_id` INT,
-  `old_data` JSON,
-  `new_data` JSON,
-  `ip_address` VARCHAR(45),
-  `user_agent` TEXT,
-  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-  INDEX `idx_profile_action` (`profile_id`, `action`),
-  INDEX `idx_created_at` (`created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='候补操作审计日志';
-```
-
-#### 记录的操作类型
-- 候补加入 (waitlist.join)
-- 候补取消 (waitlist.cancel)
-- 通知响应 (notification.respond)
-- 补课预约 (makeup.book)
-- 补偿使用 (compensation.use)
+**更新时间**: 2025-11-17 (v2.0.0 RuoYi架构重构)
+**状态**: Ready for Implementation
+**MVP**: 3
+**依赖关系**: MVP-1 (001-user-identity-system), MVP-2 (002-course-display-and-booking)
+
+## RuoYi-MyBatis-Plus数据库架构设计
+
+### 技术架构说明
+**ORM框架**: MyBatis-Plus 3.5.x
+**数据库**: MySQL 8.0+
+**缓存**: Redis 7.0+ (Spring Cache + Redis)
+**审计**: RuoYi标准审计字段
+**事务**: Spring Boot @Transactional
+**通知**: 微信服务通知集成
 
 ---
 
-**创建人**: [技术负责人]
-**最后更新**: 2025-10-31
-**版本**: 1.0.0
-**状态**: Draft
+## 1. gym_waitlist 表 - 候补队列表 (基于RuoYi扩展)
+
+管理课程候补队列，支持自动确认、6.5小时通知、FIFO队列管理。
+
+```sql
+CREATE TABLE `gym_waitlist` (
+  `waitlist_id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '候补ID',
+  `user_id` BIGINT NOT NULL COMMENT '用户ID',
+  `profile_id` BIGINT NOT NULL COMMENT '学员档案ID',
+  `course_schedule_id` BIGINT NOT NULL COMMENT '课程安排ID',
+  `queue_position` INT NOT NULL COMMENT '队列位置（实时计算）',
+  `status` CHAR(1) DEFAULT '0' COMMENT '状态（0活跃 1已确认 2已过期 3已取消 4已通知）',
+  `notification_round` INT DEFAULT 0 COMMENT '通知轮次',
+  `last_notified_at` DATETIME COMMENT '最后通知时间',
+  `response_deadline` DATETIME COMMENT '响应截止时间',
+  `confirmed_at` DATETIME COMMENT '确认时间',
+  `expired_at` DATETIME COMMENT '过期时间',
+
+  -- RuoYi标准审计字段
+  `create_by` VARCHAR(64) COMMENT '创建者',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_by` VARCHAR(64) COMMENT '更新者',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `remark` VARCHAR(500) COMMENT '备注',
+  `version` INT DEFAULT 0 COMMENT '乐观锁版本号',
+
+  UNIQUE KEY `uk_user_schedule_active` (`user_id`, `course_schedule_id`, `status`),
+  INDEX `idx_profile_status` (`profile_id`, `status`),
+  INDEX `idx_schedule_position` (`course_schedule_id`, `queue_position`),
+  INDEX `idx_status_deadline` (`status`, `response_deadline`),
+  INDEX `idx_create_time` (`create_time`),
+
+  FOREIGN KEY (`user_id`) REFERENCES `sys_user`(`user_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`profile_id`) REFERENCES `gym_profile`(`profile_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`course_schedule_id`) REFERENCES `gym_course_schedule`(`schedule_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='候补队列表（基于RuoYi扩展）';
+```
+
+**字段说明**:
+- `queue_position`: 实时计算的队列位置，FIFO排序
+- `status`: 状态管理，支持自动确认流程
+- `notification_round`: 记录通知轮次，支持多轮通知
+- `response_deadline`: 6.5小时通知后的30分钟响应窗口
+- 遵循RuoYi标准审计字段和乐观锁设计
+
+---
+
+## 2. gym_waitlist_notification 表 - 候补通知记录表 (基于RuoYi扩展)
+
+记录候补通知发送和响应情况，支持微信服务通知。
+
+```sql
+CREATE TABLE `gym_waitlist_notification` (
+  `notification_id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '通知ID',
+  `waitlist_id` BIGINT NOT NULL COMMENT '候补ID',
+  `notification_type` VARCHAR(50) NOT NULL COMMENT '通知类型',
+  `round_number` INT NOT NULL DEFAULT 1 COMMENT '轮次号',
+  `sent_at` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '发送时间',
+  `deadline_at` DATETIME NOT NULL COMMENT '截止时间',
+  `response_deadline` DATETIME NOT NULL COMMENT '响应截止时间',
+  `status` CHAR(1) DEFAULT '0' COMMENT '状态（0待响应 1已响应 2已过期 3发送失败）',
+  `responded_at` DATETIME COMMENT '响应时间',
+  `response_action` VARCHAR(20) COMMENT '响应动作（accept/decline）',
+  `wechat_template_id` VARCHAR(100) COMMENT '微信模板ID',
+  `wechat_openid` VARCHAR(128) COMMENT '微信OpenID',
+  `notification_data` JSON COMMENT '通知数据',
+  `error_message` TEXT COMMENT '错误信息',
+
+  -- RuoYi标准审计字段
+  `create_by` VARCHAR(64) COMMENT '创建者',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_by` VARCHAR(64) COMMENT '更新者',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `remark` VARCHAR(500) COMMENT '备注',
+
+  INDEX `idx_waitlist_status` (`waitlist_id`, `status`),
+  INDEX `idx_deadline_at` (`deadline_at`),
+  INDEX `idx_response_deadline` (`response_deadline`),
+  INDEX `idx_create_time` (`create_time`),
+
+  FOREIGN KEY (`waitlist_id`) REFERENCES `gym_waitlist`(`waitlist_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='候补通知记录表（基于RuoYi扩展）';
+```
+
+**字段说明**:
+- `notification_type`: 通知类型（available/reminder/expiry）
+- `response_deadline`: 30分钟响应窗口截止时间
+- `wechat_template_id`: 微信服务通知模板ID
+- 遵循RuoYi完整审计日志规范
+
+---
+
+## 3. gym_waitlist_flow 表 - 候补流程跟踪表 (基于RuoYi扩展)
+
+记录候补通知的完整处理流程，支持运营数据分析。
+
+```sql
+CREATE TABLE `gym_waitlist_flow` (
+  `flow_id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '流程ID',
+  `notification_id` BIGINT NOT NULL COMMENT '通知ID',
+  `start_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '开始时间',
+  `complete_time` DATETIME COMMENT '完成时间',
+  `expire_reason` VARCHAR(50) COMMENT '过期原因',
+  `flow_data` JSON COMMENT '流程数据',
+  `admin_id` BIGINT COMMENT '处理管理员ID',
+  `admin_notes` TEXT COMMENT '管理员备注',
+
+  -- RuoYi标准审计字段
+  `create_by` VARCHAR(64) COMMENT '创建者',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_by` VARCHAR(64) COMMENT '更新者',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `remark` VARCHAR(500) COMMENT '备注',
+
+  INDEX `idx_notification_start` (`notification_id`, `start_time`),
+  INDEX `idx_admin_id` (`admin_id`),
+  INDEX `idx_complete_time` (`complete_time`),
+
+  FOREIGN KEY (`notification_id`) REFERENCES `gym_waitlist_notification`(`notification_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`admin_id`) REFERENCES `sys_user`(`user_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='候补流程跟踪表（基于RuoYi扩展）';
+```
+
+**字段说明**:
+- `expire_reason`: 过期原因（timeout/declined/cancelled/error）
+- `flow_data`: JSON格式的流程处理数据
+- `admin_id`: RuoYi管理员用户ID，支持运营干预
+
+---
+
+## 4. gym_makeup_booking 表 - 补课预约表 (基于RuoYi扩展)
+
+管理补课预约和课时补偿使用。
+
+```sql
+CREATE TABLE `gym_makeup_booking` (
+  `makeup_id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '补课预约ID',
+  `original_booking_id` BIGINT COMMENT '原预约ID',
+  `user_id` BIGINT NOT NULL COMMENT '用户ID',
+  `profile_id` BIGINT NOT NULL COMMENT '学员档案ID',
+  `course_schedule_id` BIGINT NOT NULL COMMENT '课程安排ID',
+  `class_date` DATE NOT NULL COMMENT '上课日期',
+  `start_time` TIME NOT NULL COMMENT '开始时间',
+  `end_time` TIME NOT NULL COMMENT '结束时间',
+  `duration_minutes` INT NOT NULL COMMENT '课程时长',
+  `duration_difference` INT COMMENT '时长差异',
+  `compensation_used` DECIMAL(5,2) COMMENT '使用补偿时长',
+  `status` CHAR(1) DEFAULT '0' COMMENT '状态（0已预约 1已完成 2已取消）',
+  `cancellation_reason` TEXT COMMENT '取消原因',
+
+  -- RuoYi标准审计字段
+  `create_by` VARCHAR(64) COMMENT '创建者',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_by` VARCHAR(64) COMMENT '更新者',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `remark` VARCHAR(500) COMMENT '备注',
+  `version` INT DEFAULT 0 COMMENT '乐观锁版本号',
+
+  INDEX `idx_profile_date` (`profile_id`, `class_date`),
+  INDEX `idx_schedule_date` (`course_schedule_id`, `class_date`),
+  INDEX `idx_status_date` (`status`, `class_date`),
+  INDEX `idx_original_booking` (`original_booking_id`),
+  INDEX `idx_create_time` (`create_time`),
+
+  FOREIGN KEY (`user_id`) REFERENCES `sys_user`(`user_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`profile_id`) REFERENCES `gym_profile`(`profile_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`course_schedule_id`) REFERENCES `gym_course_schedule`(`schedule_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`original_booking_id`) REFERENCES `gym_booking`(`booking_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='补课预约表（基于RuoYi扩展）';
+```
+
+**字段说明**:
+- `duration_difference`: 与原课程的时长差异（分钟）
+- `compensation_used`: 使用的课时补偿时长
+- `status`: 补课预约状态流转管理
+- 遵循RuoYi乐观锁和审计字段设计
+
+---
+
+## 5. gym_class_credit_compensation 表 - 课时补偿表 (基于RuoYi扩展)
+
+管理学员课时补偿余额，支持14天有效期。
+
+```sql
+CREATE TABLE `gym_class_credit_compensation` (
+  `compensation_id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '补偿ID',
+  `user_id` BIGINT NOT NULL COMMENT '用户ID',
+  `profile_id` BIGINT NOT NULL COMMENT '学员档案ID',
+  `source_type` VARCHAR(50) NOT NULL COMMENT '来源类型',
+  `source_id` BIGINT COMMENT '来源ID',
+  `total_minutes` DECIMAL(5,2) NOT NULL DEFAULT 0 COMMENT '总补偿时长',
+  `used_minutes` DECIMAL(5,2) NOT NULL DEFAULT 0 COMMENT '已使用时长',
+  `remaining_minutes` DECIMAL(5,2) NOT NULL DEFAULT 0 COMMENT '剩余时长',
+  `expire_at` DATETIME NOT NULL COMMENT '过期时间',
+  `status` CHAR(1) DEFAULT '0' COMMENT '状态（0有效 1已过期 2已用完）',
+
+  -- RuoYi标准审计字段
+  `create_by` VARCHAR(64) COMMENT '创建者',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_by` VARCHAR(64) COMMENT '更新者',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `remark` VARCHAR(500) COMMENT '备注',
+  `version` INT DEFAULT 0 COMMENT '乐观锁版本号',
+
+  INDEX `idx_profile_status` (`profile_id`, `status`),
+  INDEX `idx_expire_at` (`expire_at`),
+  INDEX `idx_source` (`source_type`, `source_id`),
+  INDEX `idx_create_time` (`create_time`),
+
+  FOREIGN KEY (`user_id`) REFERENCES `sys_user`(`user_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`profile_id`) REFERENCES `gym_profile`(`profile_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='课时补偿表（基于RuoYi扩展）';
+```
+
+**字段说明**:
+- `total_minutes`: 补偿时长精确到0.5节课（30分钟）
+- `expire_at`: 14天过期时间，自动失效处理
+- `status`: 支持有效、过期、用完状态管理
+- 遵循RuoYi乐观锁和版本控制
+
+---
+
+## 6. gym_compensation_usage 表 - 补偿使用记录表 (基于RuoYi扩展)
+
+记录课时补偿使用的详细历史。
+
+```sql
+CREATE TABLE `gym_compensation_usage` (
+  `usage_id` BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '使用记录ID',
+  `compensation_id` BIGINT NOT NULL COMMENT '补偿ID',
+  `booking_id` BIGINT COMMENT '预约ID',
+  `makeup_booking_id` BIGINT COMMENT '补课预约ID',
+  `minutes_used` DECIMAL(5,2) NOT NULL COMMENT '使用时长',
+  `usage_type` VARCHAR(50) NOT NULL COMMENT '使用类型',
+  `remaining_before` DECIMAL(5,2) NOT NULL COMMENT '使用前余额',
+  `remaining_after` DECIMAL(5,2) NOT NULL COMMENT '使用后余额',
+  `admin_id` BIGINT COMMENT '操作管理员ID',
+
+  -- RuoYi标准审计字段
+  `create_by` VARCHAR(64) COMMENT '创建者',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_by` VARCHAR(64) COMMENT '更新者',
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `remark` VARCHAR(500) COMMENT '备注',
+
+  INDEX `idx_compensation_usage` (`compensation_id`, `create_time`),
+  INDEX `idx_makeup_booking` (`makeup_booking_id`),
+  INDEX `idx_admin_id` (`admin_id`),
+
+  FOREIGN KEY (`compensation_id`) REFERENCES `gym_class_credit_compensation`(`compensation_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`booking_id`) REFERENCES `gym_booking`(`booking_id`) ON DELETE SET NULL,
+  FOREIGN KEY (`makeup_booking_id`) REFERENCES `gym_makeup_booking`(`makeup_id`) ON DELETE SET NULL,
+  FOREIGN KEY (`admin_id`) REFERENCES `sys_user`(`user_id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='补偿使用记录表（基于RuoYi扩展）';
+```
+
+**字段说明**:
+- `remaining_before`/`remaining_after`: 使用前后余额记录
+- `usage_type`: 使用类型（makeup_class/class_extension/refund）
+- 遵循RuoYi完整审计日志规范
+
+---
+
+## MyBatis-Plus实体类设计
+
+### 1. GymWaitlist.java
+```java
+package com.ruoyi.project.gymnastics.waitlist.domain;
+
+import com.baomidou.mybatisplus.annotation.*;
+import com.ruoyi.framework.aspectj.lang.annotation.Excel;
+import com.ruoyi.framework.web.domain.BaseEntity;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.Accessors;
+
+import java.io.Serializable;
+import java.util.Date;
+
+/**
+ * 候补队列对象 gym_waitlist
+ *
+ * @author ruoyi
+ * @date 2025-11-17
+ */
+@Data
+@EqualsAndHashCode(callSuper = false)
+@TableName("gym_waitlist")
+@Accessors(chain = true)
+public class GymWaitlist extends BaseEntity implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 候补ID */
+    @TableId(value = "waitlist_id", type = IdType.AUTO)
+    private Long waitlistId;
+
+    /** 用户ID */
+    @Excel(name = "用户ID")
+    @TableField("user_id")
+    private Long userId;
+
+    /** 学员档案ID */
+    @Excel(name = "学员档案ID")
+    @TableField("profile_id")
+    private Long profileId;
+
+    /** 课程安排ID */
+    @Excel(name = "课程安排ID")
+    @TableField("course_schedule_id")
+    private Long courseScheduleId;
+
+    /** 队列位置（实时计算） */
+    @Excel(name = "队列位置")
+    @TableField("queue_position")
+    private Integer queuePosition;
+
+    /** 状态（0活跃 1已确认 2已过期 3已取消 4已通知） */
+    @Excel(name = "状态", readConverterExp = "0=活跃,1=已确认,2=已过期,3=已取消,4=已通知")
+    @TableField("status")
+    private String status;
+
+    /** 通知轮次 */
+    @Excel(name = "通知轮次")
+    @TableField("notification_round")
+    private Integer notificationRound;
+
+    /** 最后通知时间 */
+    @Excel(name = "最后通知时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
+    @TableField("last_notified_at")
+    private Date lastNotifiedAt;
+
+    /** 响应截止时间 */
+    @Excel(name = "响应截止时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
+    @TableField("response_deadline")
+    private Date responseDeadline;
+
+    /** 确认时间 */
+    @Excel(name = "确认时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
+    @TableField("confirmed_at")
+    private Date confirmedAt;
+
+    /** 过期时间 */
+    @Excel(name = "过期时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
+    @TableField("expired_at")
+    private Date expiredAt;
+
+    /** 乐观锁版本号 */
+    @Version
+    @TableField("version")
+    private Integer version;
+}
+```
+
+### 2. GymWaitlistNotification.java
+```java
+package com.ruoyi.project.gymnastics.waitlist.domain;
+
+import com.baomidou.mybatisplus.annotation.*;
+import com.ruoyi.framework.aspectj.lang.annotation.Excel;
+import com.ruoyi.framework.web.domain.BaseEntity;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.experimental.Accessors;
+
+import java.io.Serializable;
+import java.util.Date;
+
+/**
+ * 候补通知记录对象 gym_waitlist_notification
+ *
+ * @author ruoyi
+ * @date 2025-11-17
+ */
+@Data
+@EqualsAndHashCode(callSuper = false)
+@TableName("gym_waitlist_notification")
+@Accessors(chain = true)
+public class GymWaitlistNotification extends BaseEntity implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    /** 通知ID */
+    @TableId(value = "notification_id", type = IdType.AUTO)
+    private Long notificationId;
+
+    /** 候补ID */
+    @Excel(name = "候补ID")
+    @TableField("waitlist_id")
+    private Long waitlistId;
+
+    /** 通知类型 */
+    @Excel(name = "通知类型")
+    @TableField("notification_type")
+    private String notificationType;
+
+    /** 轮次号 */
+    @Excel(name = "轮次号")
+    @TableField("round_number")
+    private Integer roundNumber;
+
+    /** 发送时间 */
+    @Excel(name = "发送时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
+    @TableField("sent_at")
+    private Date sentAt;
+
+    /** 截止时间 */
+    @Excel(name = "截止时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
+    @TableField("deadline_at")
+    private Date deadlineAt;
+
+    /** 响应截止时间 */
+    @Excel(name = "响应截止时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
+    @TableField("response_deadline")
+    private Date responseDeadline;
+
+    /** 状态（0待响应 1已响应 2已过期 3发送失败） */
+    @Excel(name = "状态", readConverterExp = "0=待响应,1=已响应,2=已过期,3=发送失败")
+    @TableField("status")
+    private String status;
+
+    /** 响应时间 */
+    @Excel(name = "响应时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
+    @TableField("responded_at")
+    private Date respondedAt;
+
+    /** 响应动作 */
+    @Excel(name = "响应动作", readConverterExp = "accept=接受,decline=拒绝")
+    @TableField("response_action")
+    private String responseAction;
+
+    /** 微信模板ID */
+    @Excel(name = "微信模板ID")
+    @TableField("wechat_template_id")
+    private String wechatTemplateId;
+
+    /** 微信OpenID */
+    @Excel(name = "微信OpenID")
+    @TableField("wechat_openid")
+    private String wechatOpenid;
+}
+```
+
+---
+
+## MyBatis-Plus Mapper接口设计
+
+### 1. GymWaitlistMapper.java
+```java
+package com.ruoyi.project.gymnastics.waitlist.mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.ruoyi.project.gymnastics.waitlist.domain.GymWaitlist;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+
+import java.util.List;
+
+/**
+ * 候补队列Mapper接口
+ *
+ * @author ruoyi
+ * @date 2025-11-17
+ */
+@Mapper
+public interface GymWaitlistMapper extends BaseMapper<GymWaitlist> {
+
+    /**
+     * 根据课程安排查询活跃候补队列
+     *
+     * @param courseScheduleId 课程安排ID
+     * @return 候补队列列表
+     */
+    @Select("SELECT * FROM gym_waitlist WHERE course_schedule_id = #{courseScheduleId} " +
+            "AND status = '0' ORDER BY queue_position ASC")
+    List<GymWaitlist> selectActiveWaitlistBySchedule(@Param("courseScheduleId") Long courseScheduleId);
+
+    /**
+     * 查询用户候补记录
+     *
+     * @param userId 用户ID
+     * @return 候补记录列表
+     */
+    @Select("SELECT * FROM gym_waitlist WHERE user_id = #{userId} AND status IN ('0', '4') " +
+            "ORDER BY create_time DESC")
+    List<GymWaitlist> selectByUserId(@Param("userId") Long userId);
+
+    /**
+     * 查询需要发送通知的候补（6.5小时窗口）
+     *
+     * @return 候补列表
+     */
+    @Select("SELECT w.* FROM gym_waitlist w " +
+            "JOIN gym_course_schedule cs ON w.course_schedule_id = cs.schedule_id " +
+            "WHERE w.status = '0' " +
+            "AND cs.schedule_date = DATE_ADD(CURDATE(), INTERVAL 1 DAY) " +
+            "AND cs.start_time <= DATE_ADD(CURTIME(), INTERVAL 6 HOUR 30 MINUTE) " +
+            "AND (w.last_notified_at IS NULL OR w.notification_round = 0)")
+    List<GymWaitlist> selectWaitlistForNotification();
+
+    /**
+     * 更新候补队列位置
+     *
+     * @param courseScheduleId 课程安排ID
+     * @return 更新数量
+     */
+    @Select("UPDATE gym_waitlist SET queue_position = " +
+            "(SELECT row_num FROM (SELECT waitlist_id, ROW_NUMBER() OVER (ORDER BY create_time ASC) as row_num " +
+            "FROM gym_waitlist WHERE course_schedule_id = #{courseScheduleId} AND status = '0') r " +
+            "WHERE r.waitlist_id = gym_waitlist.waitlist_id) " +
+            "WHERE course_schedule_id = #{courseScheduleId} AND status = '0'")
+    int updateQueuePositions(@Param("courseScheduleId") Long courseScheduleId);
+}
+```
+
+### 2. GymClassCreditCompensationMapper.java
+```java
+package com.ruoyi.project.gymnastics.waitlist.mapper;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.ruoyi.project.gymnastics.waitlist.domain.GymClassCreditCompensation;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+/**
+ * 课时补偿Mapper接口
+ *
+ * @author ruoyi
+ * @date 2025-11-17
+ */
+@Mapper
+public interface GymClassCreditCompensationMapper extends BaseMapper<GymClassCreditCompensation> {
+
+    /**
+     * 查询学员有效补偿余额
+     *
+     * @param profileId 学员档案ID
+     * @return 有效补偿列表
+     */
+    @Select("SELECT * FROM gym_class_credit_compensation " +
+            "WHERE profile_id = #{profileId} AND status = '0' AND expire_at > NOW() " +
+            "ORDER BY expire_at ASC")
+    List<GymClassCreditCompensation> selectValidByProfile(@Param("profileId") Long profileId);
+
+    /**
+     * 统计学员总补偿时长
+     *
+     * @param profileId 学员档案ID
+     * @return 总补偿时长
+     */
+    @Select("SELECT COALESCE(SUM(remaining_minutes), 0) FROM gym_class_credit_compensation " +
+            "WHERE profile_id = #{profileId} AND status = '0' AND expire_at > NOW()")
+    BigDecimal selectTotalRemainingMinutes(@Param("profileId") Long profileId);
+
+    /**
+     * 使用补偿时长（乐观锁更新）
+     *
+     * @param compensationId 补偿ID
+     * @param minutes 使用时长
+     * @param version 版本号
+     * @return 更新数量
+     */
+    @Update("UPDATE gym_class_credit_compensation " +
+            "SET used_minutes = used_minutes + #{minutes}, " +
+            "remaining_minutes = remaining_minutes - #{minutes}, " +
+            "version = version + 1, " +
+            "update_time = NOW() " +
+            "WHERE compensation_id = #{compensationId} AND version = #{version} " +
+            "AND remaining_minutes >= #{minutes}")
+    int useCompensation(@Param("compensationId") Long compensationId,
+                       @Param("minutes") BigDecimal minutes,
+                       @Param("version") Integer version);
+
+    /**
+     * 查询即将过期的补偿
+     *
+     * @param days 天数
+     * @return 补偿列表
+     */
+    @Select("SELECT * FROM gym_class_credit_compensation " +
+            "WHERE status = '0' AND expire_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL #{days} DAY) " +
+            "AND remaining_minutes > 0 " +
+            "ORDER BY expire_at ASC")
+    List<GymClassCreditCompensation> selectExpiringSoon(@Param("days") Integer days);
+}
+```
+
+---
+
+## 实体关系图
+
+### RuoYi架构关系图
+```
+sys_user (RuoYi用户表)
+    |
+    | 1:N 关系
+    v
+gym_waitlist (候补队列表)
+    |
+    | 1:N 关系
+    v
+gym_waitlist_notification (通知记录表)
+    |
+    | 1:N 关系
+    v
+gym_waitlist_flow (流程跟踪表)
+
+gym_profile (学员档案表)
+    |
+    | 1:N 关系
+    v
+gym_class_credit_compensation (课时补偿表)
+    |
+    | 1:N 关系
+    v
+gym_compensation_usage (补偿使用记录表)
+
+gym_makeup_booking (补课预约表)
+    |
+    | 关联关系
+    v
+gym_class_credit_compensation (课时补偿表)
+```
+
+### 关键关系说明
+
+1. **用户到候补**: 一对多关系
+   - 每个sys_user可以有多个候补记录
+   - 使用uk_user_schedule_active唯一索引确保同一课程只能有一个活跃候补
+
+2. **候补到通知**: 一对多关系
+   - 每个候补可以有多轮通知记录
+   - 支持通知轮次管理和响应跟踪
+
+3. **学员到补偿**: 一对多关系
+   - 每个学员档案可以有多个补偿记录
+   - 支持多种补偿来源和有效期管理
+
+4. **补偿到使用**: 一对多关系
+   - 每个补偿可以有多笔使用记录
+   - 详细记录使用历史和余额变化
+
+---
+
+## Redis缓存策略
+
+### 缓存Key设计
+```java
+public class GymWaitlistCacheKeys {
+
+    /** 候补队列位置缓存 */
+    public static final String WAITLIST_QUEUE = "waitlist:queue:";
+
+    /** 候补状态缓存 */
+    public static final String WAITLIST_STATUS = "waitlist:status:";
+
+    /** 通知状态缓存 */
+    public static final String NOTIFICATION_STATUS = "notification:status:";
+
+    /** 学员补偿余额缓存 */
+    public static final String COMPENSATION_BALANCE = "compensation:balance:";
+
+    /** 可补课课程缓存 */
+    public static final String MAKEUP_AVAILABLE = "makeup:available:";
+
+    /** 6.5小时通知限流 */
+    public static final String NOTIFICATION_LIMIT = "notification:limit:";
+}
+```
+
+### Spring Cache配置
+```java
+@Service
+public class GymWaitlistServiceImpl implements IGymWaitlistService {
+
+    /**
+     * 缓存候补队列
+     */
+    @Cacheable(value = "waitlistQueue", key = "#courseScheduleId")
+    public List<GymWaitlist> getWaitlistQueue(Long courseScheduleId) {
+        return waitlistMapper.selectActiveWaitlistBySchedule(courseScheduleId);
+    }
+
+    /**
+     * 清除候补缓存
+     */
+    @CacheEvict(value = {"waitlistQueue", "waitlistStatus"}, allEntries = true)
+    public void clearWaitlistCache(Long courseScheduleId) {
+        // 缓存清除逻辑
+    }
+
+    /**
+     * 缓存学员补偿余额
+     */
+    @Cacheable(value = "compensationBalance", key = "#profileId")
+    public BigDecimal getCompensationBalance(Long profileId) {
+        return compensationMapper.selectTotalRemainingMinutes(profileId);
+    }
+}
+```
+
+---
+
+## 性能优化策略
+
+### 1. 索引设计
+```sql
+-- 核心查询索引
+CREATE INDEX idx_waitlist_user_schedule ON gym_waitlist(user_id, course_schedule_id, status);
+CREATE INDEX idx_waitlist_schedule_position ON gym_waitlist(course_schedule_id, queue_position);
+CREATE INDEX idx_notification_deadline ON gym_waitlist_notification(response_deadline, status);
+CREATE INDEX idx_compensation_profile_expire ON gym_class_credit_compensation(profile_id, expire_at);
+
+-- 复合索引
+CREATE INDEX idx_waitlist_status_position ON gym_waitlist(status, queue_position);
+CREATE INDEX idx_compensation_usage_time ON gym_compensation_usage(compensation_id, create_time);
+```
+
+### 2. 分页查询优化
+```java
+@Service
+public class GymWaitlistQueryOptimizer {
+
+    /**
+     * 分页查询候补记录（优化版本）
+     */
+    public TableDataInfo selectWaitlistPage(GymWaitlist waitlist) {
+        startPage();
+        LambdaQueryWrapper<GymWaitlist> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(waitlist.getUserId() != null, GymWaitlist::getUserId, waitlist.getUserId())
+               .eq(StringUtils.isNotEmpty(waitlist.getStatus()), GymWaitlist::getStatus, waitlist.getStatus())
+               .orderByDesc(GymWaitlist::getCreateTime);
+
+        List<GymWaitlist> list = waitlistMapper.selectList(wrapper);
+        return getDataTable(list);
+    }
+}
+```
+
+---
+
+## 数据迁移考虑
+
+### MyBatis-Plus迁移脚本
+```sql
+-- 1. 创建RuoYi标准候补表
+CREATE TABLE `gym_waitlist` (
+    -- 表结构如上文设计
+);
+
+-- 2. 数据迁移
+INSERT INTO gym_waitlist (user_id, profile_id, course_schedule_id, queue_position, status, create_time, create_by)
+SELECT
+    u.user_id,
+    w.profile_id,
+    w.course_schedule_id,
+    w.position,
+    CASE w.status
+        WHEN 'active' THEN '0'
+        WHEN 'confirmed' THEN '1'
+        WHEN 'expired' THEN '2'
+        WHEN 'cancelled' THEN '3'
+        ELSE '0'
+    END,
+    w.joined_at,
+    'system'
+FROM waitlist w
+JOIN gym_profile p ON w.profile_id = p.profile_id
+JOIN sys_user u ON p.user_id = u.user_id;
+
+-- 3. 创建索引
+CREATE INDEX idx_waitlist_user_schedule ON gym_waitlist(user_id, course_schedule_id, status);
+CREATE INDEX idx_waitlist_schedule_position ON gym_waitlist(course_schedule_id, queue_position);
+```
+
+### 回滚策略
+```sql
+-- 回滚脚本
+DROP TABLE IF EXISTS gym_compensation_usage;
+DROP TABLE IF EXISTS gym_class_credit_compensation;
+DROP TABLE IF EXISTS gym_makeup_booking;
+DROP TABLE IF EXISTS gym_waitlist_flow;
+DROP TABLE IF EXISTS gym_waitlist_notification;
+DROP TABLE IF EXISTS gym_waitlist;
+```
+
+---
+
+## 监控和维护
+
+### RuoYi监控指标
+```java
+@Component
+public class GymWaitlistMetrics {
+
+    /**
+     * 候补队列监控
+     */
+    @Scheduled(cron = "0 */30 * * * ?")
+    public void monitorWaitlistQueue() {
+        // 监控候补队列长度和处理时间
+    }
+
+    /**
+     * 通知发送成功率监控
+     */
+    @Scheduled(cron = "0 0 */4 * * ?")
+    public void monitorNotificationSuccess() {
+        // 监控微信通知发送成功率
+    }
+
+    /**
+     * 补偿过期监控
+     */
+    @Scheduled(cron = "0 0 2 * * ?")
+    public void monitorCompensationExpiration() {
+        // 监控即将过期的补偿
+    }
+}
+```
+
+### 审计日志
+```java
+@RestController
+public class GymWaitlistController extends BaseController {
+
+    @PostMapping("/join")
+    @PreAuthorize("@ss.hasPermission('gym:waitlist:join')")
+    @Log(title = "加入候补", businessType = BusinessType.INSERT)
+    public AjaxResult join(@Validated @RequestBody GymWaitlist waitlist) {
+        waitlist.setCreateBy(getUsername());
+        return toAjax(waitlistService.insertGymWaitlist(waitlist));
+    }
+}
+```
+
+---
+
+这个数据模型设计完全基于RuoYi-Vue-Pro架构，确保：
+1. **标准化**: 遵循RuoYi的命名规范和审计要求
+2. **安全性**: 集成RuoYi的权限控制和操作审计
+3. **性能**: 优化的索引设计和Redis缓存策略
+4. **完整性**: 完整的实体关系和数据验证
+5. **可维护性**: 清晰的代码结构和监控机制
