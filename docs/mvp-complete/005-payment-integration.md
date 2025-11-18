@@ -71,6 +71,12 @@
 - 系统必须限制每个微信OpenID只能预约一次体验课
 - 重复预约时系统必须提示"您已预约过体验课，无法重复预约"
 
+#### 钱包充值相关需求 (FR-025 到 FR-028) - 为006-wallet-system预留
+- 系统必须预留钱包充值订单类型，支持动态金额充值
+- 系统必须记录充值交易详情，包括充值金额、时间、支付方式
+- 系统必须为钱包系统提供充值记录查询接口，支持最新充值金额跟踪
+- 系统必须支持充值成功后的钱包余额更新通知机制
+
 #### 支付回调相关需求 (FR-008 到 FR-012)
 - 系统必须接收微信支付回调通知
 - 系统必须验证微信支付回调的签名
@@ -266,6 +272,7 @@ CREATE TABLE `payment_orders` (
     `currency` VARCHAR(3) NOT NULL DEFAULT 'CNY' COMMENT '货币代码',
     `status` ENUM('pending', 'paid', 'failed', 'cancelled', 'expired') NOT NULL DEFAULT 'pending',
     `payment_method` VARCHAR(32) NOT NULL DEFAULT 'wechat_pay' COMMENT '支付方式',
+    `order_type` ENUM('trial_class', 'wallet_recharge', 'membership', 'refund') NOT NULL DEFAULT 'trial_class' COMMENT '订单类型',
     `description` TEXT COMMENT '订单描述',
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -894,6 +901,8 @@ users (1) ──────── (N) payment_orders (1) ───────�
 3. **退款自动化**: 实现基于业务规则的自动退款处理
 4. **支付多元化**: 支持更多支付方式（支付宝、银行卡等）
 5. **财务管理**: 基于支付数据构建财务对账和报表系统
+6. **钱包充值集成**: 预留钱包充值接口，支持用户通过微信支付向钱包充值
+7. **充值记录跟踪**: 为006-wallet-system提供充值交易记录和最新充值金额跟踪
 
 ---
 
