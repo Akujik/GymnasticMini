@@ -2,16 +2,16 @@
 
 **功能分支**: `006-wallet-system`
 **创建时间**: 2025-11-03
-**最后更新**: 2025-11-17
-**版本**: v1.1.0
-**状态**: Updated (基于外部AI专家反馈移除机制)
+**最后更新**: 2025-11-18
+**版本**: v1.2.0
+**状态**: Enhanced (新增半年度消费跟踪和钱包冻结管理功能)
 
 ---
 
 ## 📋 项目概览
 
 ### 功能范围和核心目标
-钱包系统是百适体操馆的核心财务管理系统，为用户提供完整的钱包余额管理、课程扣费、运营充值、余额预警和欠费催缴功能。系统**移除机制**，余额必须为非负数，余额不足时直接阻止预约并提示联系运营充值；提供完善的交易记录和审计日志，保障财务安全；通过智能通知系统及时提醒用户充值，提升用户体验和运营效率。
+钱包系统是百适体操馆的核心财务管理系统，为用户提供完整的钱包余额管理、课程扣费、运营充值、余额预警、欠费催缴、半年度消费跟踪和钱包冻结管理功能。系统**支持**机制，允许钱包余额为负数，最大额度-1000元；提供完善的交易记录和审计日志，保障财务安全；通过智能通知系统及时提醒用户充值和消费要求；支持用户申请冻结和运营后台操作，增强业务灵活性。
 
 ### 与其他MVP的依赖关系
 - **前置依赖**: MVP-001 (001-user-identity-system), MVP-005 (005-payment-integration)
@@ -64,12 +64,14 @@
 - Given 用户查看交易记录，When 进入钱包页面，Then 显示该笔调整记录和详细信息
 
 #### User Story 4 - 余额不足预警通知 (Priority: P1)
-用户钱包余额低于200元时，系统通过微信服务通知推送预警提醒，帮助用户及时充值。
+用户钱包余额低于500元时，系统通过微信服务通知推送预警提醒，并在用户预约时提供弹窗和公众号双重提醒，帮助用户及时充值。
 
 **关键验收场景**:
-- Given 用户钱包余额从300元消费到190元，When 余额低于200元，Then 立即推送微信通知"余额不足200元，请及时充值"
-- Given 用户钱包余额已低于200元，When 用户再次消费，Then 不重复推送预警通知
-- Given 用户充值后余额超过200元，When 再次消费到200元以下，Then 重新触发预警通知
+- Given 用户钱包余额从600元消费到490元，When 余额低于500元，Then 立即推送微信通知"余额不足500元，请及时充值"
+- Given 用户钱包余额已低于500元，When 用户再次消费，Then 不重复推送预警通知
+- Given 用户充值后余额超过500元，When 再次消费到500元以下，Then 重新触发预警通知
+- Given 用户余额少于500元时尝试预约课程，When 点击预约按钮，Then 小程序弹窗提醒"余额不足，建议尽快联系场馆工作人员续费"
+- Given 用户余额少于500元时尝试预约课程，When 点击预约按钮，Then 同时推送微信公众号服务提醒
 - Given 用户关闭微信通知权限，When 余额不足，Then 系统记录预警但无法推送，不影响其他功能
 
 #### User Story 5 - 欠费催缴通知 (Priority: P1)
@@ -80,6 +82,30 @@
 - Given 用户欠费，When 用户尝试预约新课程，Then 弹窗提示"您有欠费，请先充值"，并推送微信通知
 - Given 用户欠费且预约的课程即将开课，When 开课前1天，Then 推送通知"您有欠费，请及时充值，避免影响孩子上课"
 - Given 用户欠费多次未处理，When 运营查看用户列表，Then 该用户显示"欠费催缴"标识
+
+#### User Story 6 - 半年度最低消费跟踪 (Priority: P1)
+系统跟踪用户从第一节课开始6个月内的消费情况，如果未达到2700元最低消费要求，提前一个月提醒用户，并在到期时执行惩罚规则。
+
+**关键验收场景**:
+- Given 用户从第一节课开始已消费5个月累计2000元，When 到第5个月底，Then 系统计算剩余时间1个月需要消费700元，推送提醒
+- Given 用户半年内累计消费达到2700元，When 6个月到期，Then 不触发惩罚，重置下一个半年周期
+- Given 用户半年内累计消费仅2000元，When 6个月到期，Then 系统自动扣除最后充值金额的30%（假设最后充值3000元，扣除900元）
+- Given 用户半年内累计消费仅2000元，且余额不足扣除30%（余额只有100元需扣除900元），When 6个月到期，Then 余额清零，记录惩罚执行
+- Given 用户被扣除惩罚后，When 查看交易记录，Then 显示"半年度消费未达标惩罚"记录
+
+#### User Story 7 - 钱包冻结管理 (Priority: P1)
+用户可以申请冻结课卡时间，暂停半年度消费计算，最长不超过3个月。申请冻结时需要明确告知限制条件并要求用户二次确认。运营人员也可以在后台为用户操作冻结。
+
+**关键验收场景**:
+- Given 用户申请冻结课卡，When 点击申请冻结，Then 弹窗告知"一年只能冻结一次，一次3个月"，需要用户二次确认
+- Given 用户确认申请冻结，When 提交申请，Then 系统暂停半年度消费计算，推送通知"现已冻结课程，冻结时长最多不超过三个月"
+- Given 用户申请冻结时已消费3个月累计1500元，When 冻结2个月，Then 冻结结束后剩余消费计算时间为1个月，仍需完成2700元目标
+- Given 用户在冻结期间点击任何课程，When 系统检测，Then 显示"课卡处于冻结阶段"提示，并提供"申请取消冻结"按钮
+- Given 用户主动解除冻结，When 提交解冻申请，Then 显示确认弹窗"确定要申请取消冻结吗？取消后将恢复预约权限"，确认后系统恢复计算课卡时间
+- Given 用户确认解除冻结，When 系统处理成功，Then 推送通知"此次冻结恢复后，需要多长时间上完多少课时，建议尽快恢复上课"
+- Given 用户冻结到期3个月未主动解除，When 到期时间到达，Then 系统自动解除冻结，推送通知"冻结时间已结束，课卡还剩余多长时间需要消耗到多少钱"
+- Given 运营在后台为用户操作冻结，When 选择用户和冻结时间，Then 系统记录运营操作原因，执行相同的冻结逻辑
+- Given 用户一年内已申请过冻结，When 再次尝试申请冻结，Then 系统提示"您今年的冻结次数已用完，每年只能冻结一次"
 
 ### 功能需求清单
 
@@ -106,18 +132,40 @@
 - 系统必须记录运营调整的操作日志
 - 系统必须提示"请将收款流水截图发送至飞书群"
 
-#### 预警通知相关需求 (FR-018 到 FR-022)
-- 系统必须在余额低于200元时推送预警通知
+#### 预警通知相关需求 (FR-018 到 FR-025)
+- 系统必须在余额低于500元时推送预警通知
+- 系统必须在用户预约时如果余额不足500元提供小程序弹窗提醒
+- 系统必须在用户预约时如果余额不足500元推送微信公众号服务提醒
 - 系统必须避免重复推送同类型预警通知
 - 系统必须在用户欠费时立即推送催缴通知
 - 系统必须在用户尝试预约时推送欠费提醒
 - 系统必须在课程开课前1天推送欠费催缴通知
 
-#### 交易记录相关需求 (FR-023 到 FR-026)
+#### 交易记录相关需求 (FR-026 到 FR-029)
 - 系统必须记录所有钱包交易（充值、扣费、调整）
 - 系统必须支持交易记录查询和筛选
 - 系统必须显示详细的交易信息（时间、金额、类型、操作人）
 - 系统必须确保交易记录不可篡改
+
+#### 半年度消费跟踪需求 (FR-030 到 FR-036)
+- 系统必须记录用户最后一次充值金额和充值时间
+- 系统必须跟踪从第一节课开始6个月内的累计消费金额
+- 系统必须在半年度结束前1个月提醒用户还需要消费的金额
+- 系统必须在半年度结束时自动检查是否达到2700元最低消费
+- 系统必须对未达标用户执行最后充值金额30%的惩罚扣除
+- 系统必须在余额不足时将惩罚金额扣至清零
+- 系统必须在惩罚执行后重置下一个半年度消费周期
+
+#### 钱包冻结管理需求 (FR-037 到 FR-045)
+- 系统必须支持用户申请冻结课卡时间
+- 系统必须支持运营在后台为用户操作冻结
+- 系统必须设置冻结时间最长不超过3个月
+- 系统必须在冻结期间暂停半年度消费时间计算
+- 系统必须支持用户主动解除冻结
+- 系统必须在冻结到期时自动解除并提醒用户
+- 系统必须在用户申请冻结时显示"一年只能冻结一次，一次3个月"的提示
+- 系统必须要求用户在申请冻结时进行二次确认
+- 系统必须在冻结期间禁用所有预约操作，但允许浏览课程信息
 
 ### 边界情况处理
 
@@ -125,6 +173,24 @@
 - **欠费用户限制**: 已欠费用户可以继续上课，但无法预约新课程
 - **额度管理**: 最大额度为-1000元，超过后无法继续扣费
 - **家庭账号**: 多个学员共享钱包，统一从家庭共享余额扣费，允许
+
+#### 半年度消费边界情况
+- **惩罚执行**: 当余额不足以扣除30%惩罚金额时，扣至清零为止
+- **充值记录**: 如果用户无充值记录，惩罚金额默认为0（无法执行惩罚）
+- **冻结期处理**: 冻结时间不计入6个月消费周期，消费周期相应延长
+- **周期重置**: 惩罚执行后立即开始新的6个月消费周期
+- **提醒频率**: 半年度提醒每月最多推送1次，避免骚扰
+
+#### 冻结管理边界情况
+- **重复冻结**: 用户一年内只能申请一次冻结，最多3个月
+- **冻结期间**: 冻结期间无法预约任何课程，已有预约不受影响
+- **提前解冻**: 用户可随时申请提前解冻，需要二次确认
+- **运营权限**: 运营可以为任何用户操作冻结，但需要记录操作原因
+- **冻结叠加**: 冻结期间不触发半年度惩罚，时间计算相应暂停
+- **冻结申请确认**: 用户申请冻结时必须显示限制条件并要求二次确认
+- **冻结状态UI**: 冻结期间所有预约相关按钮禁用，但允许浏览课程信息
+- **冻结提醒**: 用户尝试预约时显示"课卡处于冻结阶段"提示，提供取消冻结入口
+- **解冻确认**: 用户申请解冻时需要确认"确定要申请取消冻结吗？取消后将恢复预约权限"
 
 #### 数据精度和并发处理
 - **余额精度处理**: 使用DECIMAL(10,2)精确到分，避免浮点数精度问题
@@ -256,6 +322,11 @@ CREATE TABLE wallet (
     credit_limit DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Overdraft limit (default 0, can be increased)',
     total_recharged DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Total amount ever recharged',
     total_spent DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Total amount ever spent',
+    last_recharge_amount DECIMAL(10,2) NULL COMMENT 'Last recharge amount for penalty calculation',
+    last_recharge_date TIMESTAMP NULL COMMENT 'Last recharge date for penalty calculation',
+    semi_annual_consumption DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT 'Consumption in current 6-month period',
+    semi_annual_start_date TIMESTAMP NULL COMMENT 'Start date of current 6-month period',
+    semi_annual_end_date TIMESTAMP NULL COMMENT 'End date of current 6-month period',
     status ENUM('active', 'frozen', 'closed') NOT NULL DEFAULT 'active' COMMENT 'Wallet status',
     family_account_id BIGINT NULL COMMENT 'For family account sharing',
     last_transaction_at TIMESTAMP NULL COMMENT 'Timestamp of last transaction',
@@ -309,15 +380,39 @@ CREATE TABLE wallet_adjustments (
 );
 ```
 
-#### 4. balance_notifications 表
+#### 4. wallet_freezes 表
+```sql
+CREATE TABLE wallet_freezes (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    freeze_id VARCHAR(64) UNIQUE NOT NULL COMMENT 'Unique freeze identifier',
+    wallet_id BIGINT NOT NULL COMMENT 'Wallet being frozen',
+    account_id BIGINT NOT NULL COMMENT 'Account owner of wallet',
+    freeze_type ENUM('user_request', 'admin_operation') NOT NULL COMMENT 'Who initiated the freeze',
+    start_date TIMESTAMP NOT NULL COMMENT 'When freeze starts',
+    end_date TIMESTAMP NOT NULL COMMENT 'When freeze ends (max 3 months)',
+    original_semi_annual_end_date TIMESTAMP NULL COMMENT 'Original end date before freeze',
+    new_semi_annual_end_date TIMESTAMP NULL COMMENT 'Extended end date after freeze',
+    status ENUM('active', 'cancelled', 'expired') NOT NULL DEFAULT 'active' COMMENT 'Freeze status',
+    reason TEXT NULL COMMENT 'Reason for freeze',
+    admin_id BIGINT NULL COMMENT 'Admin who initiated the freeze (for admin operations)',
+    cancelled_at TIMESTAMP NULL COMMENT 'When freeze was cancelled',
+    cancelled_by ENUM('user', 'admin') NULL COMMENT 'Who cancelled the freeze',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+#### 5. balance_notifications 表
 ```sql
 CREATE TABLE balance_notifications (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     account_id BIGINT NOT NULL COMMENT 'Account receiving notification',
     wallet_id BIGINT NOT NULL COMMENT 'Associated wallet',
-    notification_type ENUM('low_balance', 'arrears', 'reminder', 'adjustment') NOT NULL,
+    notification_type ENUM('low_balance', 'arrears', 'reminder', 'adjustment', 'booking_alert', 'freeze_reminder', 'penalty_warning') NOT NULL,
     threshold_amount DECIMAL(10,2) NULL COMMENT 'Threshold that triggered notification',
     current_balance DECIMAL(10,2) NOT NULL COMMENT 'Balance at time of notification',
+    consumption_amount DECIMAL(10,2) NULL COMMENT 'Consumption amount for semi-annual warnings',
+    remaining_days INT NULL COMMENT 'Remaining days for period deadlines',
     message_content TEXT NOT NULL COMMENT 'Notification message content',
     wechat_template_id VARCHAR(64) NULL COMMENT 'WeChat template used',
     wechat_openid VARCHAR(128) NULL COMMENT 'User WeChat openid',
@@ -336,23 +431,23 @@ CREATE TABLE balance_notifications (
 ```
 users (1) -----> (1) wallet (1) -----> (N) wallet_transactions
                      |                      |
-                     |                      |
 (N) family_account  |                      v
     sharing          |         wallet_adjustments (N)
                      |                      |
                      v                      v
-            balance_notifications (N)   notification_preferences (1)
-                     |
-                     v
-            wallet_reconciliation (N)
+            wallet_freezes (N)       balance_notifications (N)
+                     |                      |
+                     v                      v
+            freeze_history (N)       notification_preferences (1)
 ```
 
 #### 关键关系说明
 1. **User to Wallet**: 一对一关系，每个用户只有一个钱包
 2. **Wallet to Transactions**: 一对多关系，每个钱包有多个交易记录
 3. **Wallet to Adjustments**: 一对多关系，手动调整记录独立于常规交易
-4. **Wallet to Notifications**: 一对多关系，按钱包跟踪余额通知
-5. **Family Account Sharing**: 自引用关系，家庭成员可共享主要账户持有人的钱包
+4. **Wallet to Freezes**: 一对多关系，每个钱包可以有多个冻结记录
+5. **Wallet to Notifications**: 一对多关系，按钱包跟踪余额通知
+6. **Family Account Sharing**: 自引用关系，家庭成员可共享主要账户持有人的钱包
 
 ### 数据验证规则
 
@@ -361,6 +456,16 @@ users (1) -----> (1) wallet (1) -----> (N) wallet_transactions
 - `credit_limit`必须 >= 0
 - `frozen_balance`不能超过总可用余额+信用额度
 - 钱包状态转换必须遵循业务规则
+- `semi_annual_consumption`必须 >= 0
+- `semi_annual_end_date`必须 > `semi_annual_start_date`
+- `last_recharge_amount`必须 > 0 当不为NULL时
+
+#### 冻结验证规则
+- `end_date` - `start_date` 不能超过3个月（90天）
+- 同一用户一年内只能有一个有效的冻结记录
+- 冻结期间不能有其他冻结记录
+- 冻结开始时间不能是过去时间
+- 解冻时间必须在冻结期间内
 
 #### 交易验证规则
 - `transaction_id`必须是唯一的UUID格式
@@ -542,6 +647,27 @@ users (1) -----> (1) wallet (1) -----> (N) wallet_transactions
 - 多提醒场景支持
 - 提醒升级逻辑
 
+#### Task 4.6: 实现预约时余额检查
+- 预约API增加余额检查逻辑
+- 余额不足500元时小程序弹窗提醒
+- 同时推送微信公众号服务提醒
+- 集成现有预约流程，不影响性能
+- 余额检查失败的处理逻辑
+
+#### Task 4.7: 实现半年度消费跟踪
+- 第一次扣费时启动6个月消费周期跟踪
+- 每次扣费更新半年度消费累计
+- 半年度结束前1个月提醒逻辑
+- 2700元最低消费检查
+- 惩罚执行和交易记录创建
+
+#### Task 4.8: 实现钱包冻结管理
+- 用户申请冻结API和流程
+- 运营后台冻结操作界面
+- 冻结期间半年度时间暂停逻辑
+- 自动解冻和提醒机制
+- 冻解冻操作审计日志
+
 ### 阶段5: 高级功能和优化 (3天)
 
 #### Task 5.1: 实现家庭账号钱包共享
@@ -569,15 +695,25 @@ users (1) -----> (1) wallet (1) -----> (N) wallet_transactions
 - 95%+覆盖率的单元测试
 - 所有主要流程的集成测试
 - 预约和调整的端到端测试
+- 半年度消费和冻结功能测试
 - 负载下的性能测试
 - 财务操作的安全测试
 
 #### Task 5.5: 监控和告警设置
 - 余额准确性指标收集
 - 交易成功/失败监控
-- 通知传递监控
+- 通知送达监控
+- 半年度惩罚执行监控
+- 冻结状态变化监控
 - 性能指标仪表板
 - 关键问题的告警配置
+
+#### Task 5.6: 通知模板优化
+- 设计不同场景的微信通知模板
+- 半年度消费提醒模板
+- 冻结状态变化通知模板
+- 预约余额不足弹窗优化
+- 通知频率控制优化
 
 ---
 
